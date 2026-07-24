@@ -90,6 +90,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
     var index by remember { mutableIntStateOf(0) }
     var showAddExercise by remember { mutableStateOf(false) }
     var showSummary by remember { mutableStateOf(false) }
+    var editingFinished by remember { mutableStateOf(false) }
     var pendingSetDelete by remember { mutableStateOf<Long?>(null) }
     var restRemaining by remember { mutableIntStateOf(0) }
     var restActive by remember { mutableStateOf(false) }
@@ -114,6 +115,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
     val totalVolume = sets.sumOf { (it.reps ?: 0) * (it.weightKg ?: 0.0) }
     val completed = sets.count { it.reps != null || it.weightKg != null }
     val finished = workout?.finishedAt != null
+    val canEdit = !finished || editingFinished
     val elapsedSeconds = workout?.let { ((it.finishedAt ?: now) - it.createdAt).coerceAtLeast(0) / 1_000 } ?: 0
 
     Box(Modifier.fillMaxSize()) {
@@ -125,10 +127,18 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
         ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 0.dp)) {
-                    Icon(Icons.Outlined.ArrowBack, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Workouts")
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 0.dp)) {
+                        Icon(Icons.Outlined.ArrowBack, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Workouts")
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (finished) {
+                        TextButton(onClick = { editingFinished = !editingFinished }) {
+                            Text(if (editingFinished) "Done" else "Edit")
+                        }
+                    }
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                     Column(Modifier.weight(1f)) {
@@ -187,7 +197,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                         set = set,
                         settings = settings,
                         showLabels = rowIndex == 0,
-                        readOnly = finished,
+                        readOnly = !canEdit,
                         onUpdate = { reps, weight -> viewModel.updateSet(set.id, reps, weight, set.rpe) },
                         onSetType = { viewModel.updateSetType(set.id, it) },
                         onComplete = {
@@ -199,7 +209,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                     )
                 }
             }
-            if (!finished) item {
+            if (canEdit) item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(
                         onClick = { viewModel.appendSet(workoutId, current.first().exerciseId) },
@@ -234,7 +244,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                     }
                 }
             }
-            if (!finished) item {
+            if (canEdit) item {
                 if (index < groups.lastIndex) {
                     TextButton(
                         onClick = {
@@ -275,7 +285,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
         }
     }
 
-    if (!finished && showAddExercise) {
+    if (canEdit && showAddExercise) {
         AddExerciseSheet(
             exercises = exercises,
             onToggleFavorite = viewModel::toggleFavorite,
