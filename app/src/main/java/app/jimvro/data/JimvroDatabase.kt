@@ -121,6 +121,18 @@ data class WorkoutSummary(
     val volumeKg: Double,
 )
 
+data class WorkoutSetDetail(
+    val id: Long,
+    val workoutId: Long,
+    val exerciseId: Long,
+    val exerciseName: String,
+    val muscleGroup: String,
+    val setNumber: Int,
+    val reps: Int?,
+    val weightKg: Double?,
+    val rpe: Double?,
+)
+
 data class DailyNutrition(
     val calories: Double,
     val proteinG: Double,
@@ -153,8 +165,27 @@ interface WorkoutDao {
     @Query("SELECT COUNT(*) FROM workouts WHERE performedOn = :date")
     fun observeCountOn(date: String): Flow<Int>
 
+    @Query("SELECT * FROM workouts WHERE id = :id")
+    fun observeWorkout(id: Long): Flow<WorkoutEntity?>
+
+    @Query(
+        """SELECT s.id, s.workoutId, s.exerciseId, e.name AS exerciseName,
+            e.muscleGroup, s.setNumber, s.reps, s.weightKg, s.rpe
+            FROM workout_sets s INNER JOIN exercises e ON e.id = s.exerciseId
+            WHERE s.workoutId = :workoutId ORDER BY s.id""",
+    )
+    fun observeSetDetails(workoutId: Long): Flow<List<WorkoutSetDetail>>
+
     @Insert suspend fun insertWorkout(value: WorkoutEntity): Long
     @Insert suspend fun insertSet(value: WorkoutSetEntity): Long
+    @Query("UPDATE workout_sets SET reps = :reps, weightKg = :weightKg, rpe = :rpe WHERE id = :setId")
+    suspend fun updateSet(setId: Long, reps: Int?, weightKg: Double?, rpe: Double?)
+
+    @Query("DELETE FROM workout_sets WHERE id = :setId")
+    suspend fun deleteSet(setId: Long)
+
+    @Query("SELECT COALESCE(MAX(setNumber), 0) FROM workout_sets WHERE workoutId = :workoutId AND exerciseId = :exerciseId")
+    suspend fun maxSetNumber(workoutId: Long, exerciseId: Long): Int
     @Query("DELETE FROM workouts WHERE id = :id") suspend fun deleteWorkout(id: Long)
 
     @Transaction
@@ -163,6 +194,18 @@ interface WorkoutDao {
         sets.forEach { insertSet(it.copy(workoutId = workoutId)) }
         return workoutId
     }
+
+    @Transaction
+    suspend fun appendSet(workoutId: Long, exerciseId: Long, reps: Int? = null, weightKg: Double? = null): Long =
+        insertSet(
+            WorkoutSetEntity(
+                workoutId = workoutId,
+                exerciseId = exerciseId,
+                setNumber = maxSetNumber(workoutId, exerciseId) + 1,
+                reps = reps,
+                weightKg = weightKg,
+            ),
+        )
 }
 
 @Dao

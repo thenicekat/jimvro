@@ -7,6 +7,10 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import app.jimvro.R
 
 val Paper = Color(0xFFF7F3EA)
 val PaperCard = Color(0xFFFFFCF5)
@@ -16,6 +20,12 @@ val Clay = Color(0xFFA65F47)
 val ClayMuted = Color(0xFFF0D9CD)
 val Espresso = Color(0xFF2A2421)
 val EspressoCard = Color(0xFF38302C)
+
+val Fraunces = FontFamily(
+    Font(R.font.fraunces, FontWeight.Normal),
+    Font(R.font.fraunces, FontWeight.Medium),
+    Font(R.font.fraunces, FontWeight.SemiBold),
+)
 
 private val LightColors = lightColorScheme(
     primary = Ink,
@@ -29,6 +39,11 @@ private val LightColors = lightColorScheme(
     onSurface = Ink,
     surfaceVariant = Color(0xFFEFE9DF),
     onSurfaceVariant = MutedInk,
+    surfaceContainerLowest = PaperCard,
+    surfaceContainerLow = PaperCard,
+    surfaceContainer = PaperCard,
+    surfaceContainerHigh = PaperCard,
+    surfaceContainerHighest = Color(0xFFF3EEE5),
     outline = Color(0xFFD8CEC2),
     error = Color(0xFFB3261E),
 )
@@ -45,6 +60,11 @@ private val DarkColors = darkColorScheme(
     onSurface = Color(0xFFF4ECE4),
     surfaceVariant = Color(0xFF463C37),
     onSurfaceVariant = Color(0xFFC9BBB1),
+    surfaceContainerLowest = Espresso,
+    surfaceContainerLow = EspressoCard,
+    surfaceContainer = EspressoCard,
+    surfaceContainerHigh = Color(0xFF403732),
+    surfaceContainerHighest = Color(0xFF493E38),
     outline = Color(0xFF665850),
 )
 
@@ -52,7 +72,12 @@ private val DarkColors = darkColorScheme(
 fun JimvroTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
-        typography = androidx.compose.material3.Typography(),
+        typography = androidx.compose.material3.Typography(
+            displayLarge = androidx.compose.material3.Typography().displayLarge.copy(fontFamily = Fraunces),
+            displayMedium = androidx.compose.material3.Typography().displayMedium.copy(fontFamily = Fraunces),
+            headlineLarge = androidx.compose.material3.Typography().headlineLarge.copy(fontFamily = Fraunces),
+            headlineMedium = androidx.compose.material3.Typography().headlineMedium.copy(fontFamily = Fraunces),
+        ),
         content = content,
     )
 }

@@ -17,6 +17,8 @@ class JimvroRepository(private val database: JimvroDatabase) {
     fun foodOn(date: String): Flow<List<FoodEntryEntity>> = database.foodDao().observeOn(date)
     fun nutritionOn(date: String): Flow<DailyNutrition> = database.foodDao().observeNutritionOn(date)
     fun workoutsOn(date: String): Flow<Int> = database.workoutDao().observeCountOn(date)
+    fun workout(id: Long): Flow<WorkoutEntity?> = database.workoutDao().observeWorkout(id)
+    fun workoutSets(id: Long): Flow<List<WorkoutSetDetail>> = database.workoutDao().observeSetDetails(id)
 
     suspend fun addMeasurement(value: MeasurementEntity) = database.measurementDao().insert(value)
     suspend fun deleteMeasurement(value: MeasurementEntity) = database.measurementDao().delete(value)
@@ -24,6 +26,11 @@ class JimvroRepository(private val database: JimvroDatabase) {
     suspend fun createWorkout(value: WorkoutEntity, sets: List<WorkoutSetEntity>) =
         database.workoutDao().createWorkout(value, sets)
     suspend fun deleteWorkout(id: Long) = database.workoutDao().deleteWorkout(id)
+    suspend fun appendSet(workoutId: Long, exerciseId: Long, reps: Int? = null, weightKg: Double? = null) =
+        database.workoutDao().appendSet(workoutId, exerciseId, reps, weightKg)
+    suspend fun updateSet(setId: Long, reps: Int?, weightKg: Double?, rpe: Double? = null) =
+        database.workoutDao().updateSet(setId, reps, weightKg, rpe)
+    suspend fun deleteSet(setId: Long) = database.workoutDao().deleteSet(setId)
     suspend fun addFood(value: FoodEntryEntity) = database.foodDao().insert(value)
     suspend fun deleteFood(value: FoodEntryEntity) = database.foodDao().delete(value)
 
