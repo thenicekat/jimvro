@@ -15,7 +15,7 @@ class JimvroApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            repository.seedExercises()
+            repository.seedExercises(this@JimvroApplication)
         }
     }
 }

@@ -1,6 +1,5 @@
 package app.jimvro.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -182,7 +181,6 @@ fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
 ) {
     var name by remember { mutableStateOf("") }
     var selected by remember(exercises) { mutableStateOf(exercises.firstOrNull()) }
-    var menu by remember { mutableStateOf(false) }
     var sets by remember { mutableStateOf(3) }
     var repLow by remember { mutableStateOf(8) }
     var repHigh by remember { mutableStateOf(12) }
@@ -211,20 +209,11 @@ fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
                 }
             }
         }
-        androidx.compose.foundation.layout.Box {
-            Button(
-                onClick = { menu = true },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
-            ) { Text(selected?.name ?: "Choose exercise", fontWeight = FontWeight.Normal) }
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                exercises.filterNot { exercise -> targets.any { it.exerciseId == exercise.id } }.forEach { exercise ->
-                    DropdownMenuItem(text = { Text(exercise.name) }, onClick = { selected = exercise; menu = false })
-                }
-            }
-        }
+        ExerciseSearchField(
+            exercises = exercises.filterNot { exercise -> targets.any { it.exerciseId == exercise.id } },
+            selected = selected,
+            onSelected = { selected = it },
+        )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TargetStepper("Sets", sets, 1..8, Modifier.weight(1f)) { sets = it }
             TargetStepper("Reps", repLow, 1..30, Modifier.weight(1f)) { repLow = it; if (repHigh < it) repHigh = it }
@@ -257,29 +246,59 @@ private fun TargetStepper(label: String, value: Int, range: IntRange, modifier: 
     }
 }
 
+@Composable
+internal fun ExerciseSearchField(
+    exercises: List<ExerciseEntity>,
+    selected: ExerciseEntity?,
+    onSelected: (ExerciseEntity) -> Unit,
+) {
+    var query by remember(selected?.id) { mutableStateOf(selected?.name.orEmpty()) }
+    var expanded by remember { mutableStateOf(false) }
+    val matches = remember(query, exercises) {
+        if (query.isBlank()) exercises.take(20) else exercises.filter { exercise ->
+            listOf(exercise.name, exercise.muscleGroup, exercise.bodyPart, exercise.equipment, exercise.target)
+                .any { it?.contains(query, ignoreCase = true) == true }
+        }.take(30)
+    }
+    androidx.compose.foundation.layout.Box {
+        AppField(
+            value = query,
+            onValueChange = { query = it; expanded = true },
+            label = "Search exercise, muscle, or equipment",
+        )
+        DropdownMenu(expanded = expanded && matches.isNotEmpty(), onDismissRequest = { expanded = false }) {
+            matches.forEach { exercise ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(exercise.name, fontSize = 14.sp)
+                            Text(
+                                listOfNotNull(exercise.target, exercise.equipment).joinToString(" · "),
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    onClick = { query = exercise.name; onSelected(exercise); expanded = false },
+                )
+            }
+        }
+    }
+}
+
 @Composable private fun AddTemplateLineSheet(
     exercises: List<ExerciseEntity>,
     onDismiss: () -> Unit,
     onAdd: (Long, Int, Int?, Int?) -> Unit,
 ) {
     var selected by remember(exercises) { mutableStateOf(exercises.firstOrNull()) }
-    var menu by remember { mutableStateOf(false) }
     var sets by remember { mutableStateOf("3") }
     var low by remember { mutableStateOf("") }
     var high by remember { mutableStateOf("") }
     FormSheet("Add exercise", "Set a target; weight is logged during training.", "Add exercise", selected != null && (sets.toIntOrNull() ?: 0) > 0, {
         selected?.let { onAdd(it.id, sets.toIntOrNull() ?: 3, low.toIntOrNull(), high.toIntOrNull()) }
     }, onDismiss) {
-        androidx.compose.foundation.layout.Box {
-            Button(
-                onClick = { menu = true }, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
-            ) { Text(selected?.name ?: "Choose exercise") }
-            DropdownMenu(menu, { menu = false }) {
-                exercises.forEach { exercise -> DropdownMenuItem({ Text(exercise.name) }, { selected = exercise; menu = false }) }
-            }
-        }
+        ExerciseSearchField(exercises, selected) { selected = it }
         AppField(sets, { sets = it.filter(Char::isDigit) }, "Target sets")
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppField(low, { low = it.filter(Char::isDigit) }, "Min reps", Modifier.weight(1f))

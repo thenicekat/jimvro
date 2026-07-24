@@ -31,8 +31,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -362,7 +360,6 @@ private fun AddExerciseSheet(
     onAdd: (Long, Int?, Double?) -> Unit,
 ) {
     var selected by remember(exercises) { mutableStateOf(exercises.firstOrNull()) }
-    var menuOpen by remember { mutableStateOf(false) }
     var reps by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("") }
     FormSheet(
@@ -373,20 +370,7 @@ private fun AddExerciseSheet(
         onPrimary = { selected?.let { onAdd(it.id, reps.toIntOrNull(), weight.toDoubleOrNull()) } },
         onDismiss = onDismiss,
     ) {
-        Box {
-            Button(
-                onClick = { menuOpen = true },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.75f)),
-            ) { Text(selected?.name ?: "Choose exercise") }
-            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                exercises.forEach { exercise ->
-                    DropdownMenuItem(text = { Text(exercise.name) }, onClick = { selected = exercise; menuOpen = false })
-                }
-            }
-        }
+        ExerciseSearchField(exercises, selected) { selected = it }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppField(reps, { reps = it.filter(Char::isDigit) }, "Reps", Modifier.weight(1f))
             AppField(weight, { weight = it.filter { char -> char.isDigit() || char == '.' } }, "Weight (kg)", Modifier.weight(1f))

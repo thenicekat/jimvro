@@ -35,11 +35,17 @@ data class MeasurementEntity(
     val createdAt: Long = System.currentTimeMillis(),
 )
 
-@Entity(tableName = "exercises", indices = [Index(value = ["name"], unique = true)])
+@Entity(tableName = "exercises", indices = [Index(value = ["name"], unique = true), Index(value = ["sourceId"], unique = true)])
 data class ExerciseEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val muscleGroup: String = "other",
+    val sourceId: String? = null,
+    val bodyPart: String? = null,
+    val equipment: String? = null,
+    val target: String? = null,
+    val secondaryMuscles: String? = null,
+    val instructions: String? = null,
 )
 
 @Entity(tableName = "workouts", indices = [Index("performedOn")])
@@ -347,6 +353,9 @@ interface ExerciseDao {
     @Query("SELECT * FROM exercises ORDER BY name")
     fun observeAll(): Flow<List<ExerciseEntity>>
 
+    @Query("SELECT COUNT(*) FROM exercises WHERE sourceId IS NOT NULL")
+    suspend fun importedCount(): Int
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(values: List<ExerciseEntity>)
 }
@@ -390,7 +399,7 @@ interface FoodDao {
         FoodEntryEntity::class,
         BarcodeProductEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class JimvroDatabase : RoomDatabase() {
@@ -403,7 +412,7 @@ abstract class JimvroDatabase : RoomDatabase() {
     companion object {
         fun create(context: Context): JimvroDatabase =
             Room.databaseBuilder(context, JimvroDatabase::class.java, "jimvro.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -412,6 +421,18 @@ abstract class JimvroDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS template_exercises (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, templateId INTEGER NOT NULL, exerciseId INTEGER NOT NULL, position INTEGER NOT NULL, targetSets INTEGER NOT NULL, repLow INTEGER, repHigh INTEGER, FOREIGN KEY(templateId) REFERENCES workout_templates(id) ON UPDATE NO ACTION ON DELETE CASCADE, FOREIGN KEY(exerciseId) REFERENCES exercises(id) ON UPDATE NO ACTION ON DELETE RESTRICT)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_template_exercises_templateId ON template_exercises(templateId)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_template_exercises_exerciseId ON template_exercises(exerciseId)")
+            }
+        }
+
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE exercises ADD COLUMN sourceId TEXT")
+                db.execSQL("ALTER TABLE exercises ADD COLUMN bodyPart TEXT")
+                db.execSQL("ALTER TABLE exercises ADD COLUMN equipment TEXT")
+                db.execSQL("ALTER TABLE exercises ADD COLUMN target TEXT")
+                db.execSQL("ALTER TABLE exercises ADD COLUMN secondaryMuscles TEXT")
+                db.execSQL("ALTER TABLE exercises ADD COLUMN instructions TEXT")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_exercises_sourceId ON exercises(sourceId)")
             }
         }
     }
