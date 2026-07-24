@@ -5,6 +5,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.content.res.Configuration
 import android.os.Build
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -246,7 +248,7 @@ fun JimvroApp(
                 Destination.entries.forEach { destination ->
                     NavigationBarItem(
                         selected = currentRoute == destination.route,
-                        onClick = { navigateRoot(destination.route) },
+                        onClick = { if (currentRoute != destination.route) navigateRoot(destination.route) },
                         icon = { Icon(destination.icon, null) },
                         label = { Text(destination.label) },
                         colors = NavigationBarItemDefaults.colors(
@@ -263,6 +265,10 @@ fun JimvroApp(
             navController = navController,
             startDestination = Destination.Today.route,
             modifier = Modifier.padding(padding),
+            enterTransition = { EnterTransition.None },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { ExitTransition.None },
         ) {
             composable(Destination.Today.route) {
                 TodayScreen(viewModel, navigateRoot, settings)
