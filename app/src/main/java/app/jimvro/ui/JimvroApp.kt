@@ -8,6 +8,7 @@ import android.os.Build
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -40,6 +41,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowOutward
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material.icons.outlined.Delete
@@ -53,6 +55,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -74,6 +78,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -123,6 +128,10 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
@@ -1146,6 +1155,51 @@ private fun SettingsSheet(settings: AppSettings, onDismiss: () -> Unit, onSave: 
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DateField(value: String, onChange: (String) -> Unit) {
+    var pickerOpen by remember { mutableStateOf(false) }
+    val selectedMillis = remember(value) {
+        runCatching {
+            LocalDate.parse(value).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        }.getOrNull()
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
+            .clickable { pickerOpen = true }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("Date", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(formatDateForDisplay(value), fontSize = 16.sp)
+        }
+        Icon(Icons.Outlined.CalendarMonth, "Choose date", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    if (pickerOpen) {
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = selectedMillis)
+        DatePickerDialog(
+            onDismissRequest = { pickerOpen = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { millis ->
+                        onChange(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString())
+                    }
+                    pickerOpen = false
+                }) { Text("Choose") }
+            },
+            dismissButton = { TextButton(onClick = { pickerOpen = false }) { Text("Cancel") } },
+        ) { DatePicker(state = pickerState) }
+    }
+}
+
+private fun formatDateForDisplay(value: String): String = runCatching {
+    LocalDate.parse(value).format(DateTimeFormatter.ofPattern("EEE, d MMM yyyy", Locale.getDefault()))
+}.getOrDefault(value)
+
 @Composable
 private fun WorkoutDialog(
     onDismiss: () -> Unit,
@@ -1162,7 +1216,7 @@ private fun WorkoutDialog(
         onDismiss = onDismiss,
     ) {
         AppField(name, { name = it }, "Session name")
-        AppField(date, { date = it }, "Date (YYYY-MM-DD)")
+        DateField(date) { date = it }
     }
 }
 
@@ -1197,7 +1251,7 @@ private fun MeasurementDialog(settings: AppSettings, onDismiss: () -> Unit, onSa
         },
         onDismiss = onDismiss,
     ) {
-        AppField(date, { date = it }, "Date (YYYY-MM-DD)")
+        DateField(date) { date = it }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppField(weight, { weight = it }, "Weight (${settings.weightUnit})", Modifier.weight(1f))
             AppField(bodyFat, { bodyFat = it }, "Body fat (%)", Modifier.weight(1f))
@@ -1223,15 +1277,17 @@ private fun FoodDialog(product: BarcodeProductEntity?, onDismiss: () -> Unit, on
     var protein by remember(product) { mutableStateOf(product?.proteinPer100g?.times(defaultServing / 100)?.pretty().orEmpty()) }
     var carbs by remember(product) { mutableStateOf(product?.carbsPer100g?.times(defaultServing / 100)?.pretty().orEmpty()) }
     var fat by remember(product) { mutableStateOf(product?.fatPer100g?.times(defaultServing / 100)?.pretty().orEmpty()) }
+    var date by remember { mutableStateOf(today()) }
     FormSheet(
         title = if (product == null) "Log food" else "Review scanned food",
         description = if (product == null) "Add a meal and its macros." else "Check the serving and nutrition before saving.",
         primaryLabel = "Add food",
         primaryEnabled = name.isNotBlank(),
-        onPrimary = { onSave(FoodEntryEntity(consumedOn = today(), name = name.trim(), calories = calories.toDoubleOrNull(), proteinG = protein.toDoubleOrNull(), carbsG = carbs.toDoubleOrNull(), fatG = fat.toDoubleOrNull(), barcode = product?.barcode)) },
+        onPrimary = { onSave(FoodEntryEntity(consumedOn = date, name = name.trim(), calories = calories.toDoubleOrNull(), proteinG = protein.toDoubleOrNull(), carbsG = carbs.toDoubleOrNull(), fatG = fat.toDoubleOrNull(), barcode = product?.barcode)) },
         onDismiss = onDismiss,
     ) {
             AppField(name, { name = it }, "Food")
+            DateField(date) { date = it }
             if (product != null) AppField(serving, { value ->
                 serving = value
                 value.toDoubleOrNull()?.let { grams ->
