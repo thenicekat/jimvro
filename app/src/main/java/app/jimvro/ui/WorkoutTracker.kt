@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -83,8 +82,8 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -95,7 +94,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                     Column(Modifier.weight(1f)) {
-                        Text(workout?.name ?: "Workout", fontSize = 28.sp, fontWeight = FontWeight.Normal)
+                        Text(workout?.name ?: "Workout", style = MaterialTheme.typography.headlineMedium)
                         Text(workout?.performedOn.orEmpty(), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -141,13 +140,13 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
                             group.first().exerciseName,
                             Modifier
                                 .background(
-                                    if (dotIndex == index) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.surface,
-                                    CircleShape,
+                                    if (dotIndex == index) ClayMuted.copy(alpha = 0.65f) else MaterialTheme.colorScheme.background,
+                                    RoundedCornerShape(7.dp),
                                 )
                                 .clickable { index = dotIndex }
                                 .padding(horizontal = 13.dp, vertical = 8.dp),
                             fontSize = 12.sp,
-                            color = if (dotIndex == index) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (dotIndex == index) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -355,21 +354,22 @@ private fun TrackerSetRow(
     var reps by remember(set.id, set.reps) { mutableStateOf(set.reps?.toString().orEmpty()) }
     var weight by remember(set.id, set.weightKg) { mutableStateOf(set.weightKg?.prettyTracker().orEmpty()) }
     val done = reps.isNotBlank() || weight.isNotBlank()
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = if (done) ClayMuted.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, if (done) Clay.copy(alpha = 0.28f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(if (done) ClayMuted.copy(alpha = 0.22f) else MaterialTheme.colorScheme.background, RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("SET ${set.setNumber}", fontSize = 11.sp, letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(set.setNumber.toString().padStart(2, '0'), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 TextButton(
                     onClick = {
                         val types = listOf("working", "warmup", "drop")
                         onSetType(types[(types.indexOf(set.setType) + 1).mod(types.size)])
                     },
-                    modifier = Modifier.weight(1f),
-                ) { Text(set.setType.replaceFirstChar(Char::uppercase), fontSize = 11.sp) }
+                    modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp),
+                ) { Text(set.setType.replaceFirstChar(Char::uppercase), fontSize = 11.sp, color = Clay) }
                 IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.Delete, "Delete set", Modifier.size(18.dp)) }
             }
             if (showLabels) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -391,7 +391,7 @@ private fun TrackerSetRow(
                     contentAlignment = Alignment.Center,
                 ) { Icon(Icons.Outlined.Check, null, tint = if (done) MaterialTheme.colorScheme.surface else Clay) }
             }
-        }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
     }
 }
 
@@ -404,7 +404,7 @@ private fun TrackerNumberField(value: String, label: String, modifier: Modifier,
         placeholder = { Text("—") },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(7.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = Clay,
             unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),

@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import app.jimvro.R
 
 val Paper = Color(0xFFF2F0EA)
@@ -81,11 +82,16 @@ fun JimvroTheme(themeMode: ThemeMode = ThemeMode.SYSTEM, content: @Composable ()
     MaterialTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
         typography = baseTypography.copy(
-            labelLarge = baseTypography.labelLarge.copy(fontWeight = FontWeight.Normal),
-            labelMedium = baseTypography.labelMedium.copy(fontWeight = FontWeight.Normal),
-            titleLarge = baseTypography.titleLarge.copy(fontWeight = FontWeight.Normal),
-            titleMedium = baseTypography.titleMedium.copy(fontWeight = FontWeight.Normal),
-            titleSmall = baseTypography.titleSmall.copy(fontWeight = FontWeight.Normal),
+            displaySmall = baseTypography.displaySmall.copy(fontSize = 36.sp, lineHeight = 40.sp, fontWeight = FontWeight.Normal, letterSpacing = (-0.5).sp),
+            headlineLarge = baseTypography.headlineLarge.copy(fontSize = 30.sp, lineHeight = 35.sp, fontWeight = FontWeight.Normal, letterSpacing = (-0.35).sp),
+            headlineMedium = baseTypography.headlineMedium.copy(fontSize = 24.sp, lineHeight = 29.sp, fontWeight = FontWeight.Normal),
+            titleLarge = baseTypography.titleLarge.copy(fontSize = 20.sp, lineHeight = 25.sp, fontWeight = FontWeight.Medium),
+            titleMedium = baseTypography.titleMedium.copy(fontSize = 16.sp, lineHeight = 21.sp, fontWeight = FontWeight.Medium),
+            titleSmall = baseTypography.titleSmall.copy(fontSize = 14.sp, lineHeight = 19.sp, fontWeight = FontWeight.Medium),
+            bodyLarge = baseTypography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 23.sp, fontWeight = FontWeight.Normal),
+            bodyMedium = baseTypography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal),
+            labelLarge = baseTypography.labelLarge.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium),
+            labelMedium = baseTypography.labelMedium.copy(fontSize = 12.sp, fontWeight = FontWeight.Medium),
         ),
         content = content,
     )

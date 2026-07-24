@@ -9,10 +9,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
@@ -50,7 +52,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -398,17 +402,20 @@ private fun ExercisePickerDialog(
             .take(100)
             .toList()
     }
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
         Surface(
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
-            shape = RoundedCornerShape(14.dp),
-            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier.fillMaxSize().systemBarsPadding(),
+            shape = RectangleShape,
+            color = MaterialTheme.colorScheme.background,
         ) {
-            Column(Modifier.padding(top = 20.dp)) {
+            Column(Modifier.padding(top = 12.dp)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Choose exercise", fontSize = 22.sp, fontWeight = FontWeight.Normal)
-                        Text("${exercises.size} movements", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Exercises", style = MaterialTheme.typography.headlineMedium)
+                        Text("Search or browse your library", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     TextButton(onClick = onDismiss) { Text("Cancel") }
                 }
@@ -419,7 +426,7 @@ private fun ExercisePickerDialog(
                     placeholder = { Text("Search name, muscle, equipment") },
                     leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(19.dp)) },
                     singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(8.dp),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Clay),
                 )
                 Row(
@@ -431,15 +438,15 @@ private fun ExercisePickerDialog(
                         FilterChip(selected = bodyPart == part, onClick = { bodyPart = part }, label = { Text(part.replaceFirstChar(Char::uppercase)) })
                     }
                 }
-                Text("${matches.size}${if (matches.size == 100) "+" else ""} RESULTS", Modifier.padding(horizontal = 20.dp, vertical = 10.dp), fontSize = 9.sp, letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${matches.size}${if (matches.size == 100) "+" else ""} results", Modifier.padding(horizontal = 20.dp, vertical = 10.dp), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 LazyColumn(Modifier.weight(1f)) {
                     items(matches, key = { it.id }) { exercise ->
                         Row(
-                            Modifier.fillMaxWidth().clickable { onSelected(exercise) }.padding(horizontal = 20.dp, vertical = 12.dp),
+                            Modifier.fillMaxWidth().clickable { onSelected(exercise) }.padding(horizontal = 20.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text(exercise.name, fontSize = 14.sp)
+                                Text(exercise.name, style = MaterialTheme.typography.bodyLarge)
                                 Text(
                                     listOfNotNull(exercise.target, exercise.equipment).joinToString(" · "),
                                     fontSize = 11.sp,

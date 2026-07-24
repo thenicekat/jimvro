@@ -249,17 +249,17 @@ internal fun Page(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(26.dp),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 22.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
     ) {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
-                    Text(eyebrow.uppercase(), color = Clay, fontSize = 11.sp, letterSpacing = 1.8.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Text(title, fontSize = 32.sp, fontWeight = FontWeight.Normal, letterSpacing = (-0.3).sp)
-                    Spacer(Modifier.height(8.dp))
-                    Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp, lineHeight = 21.sp)
+                    Text(eyebrow.uppercase(), color = Clay, fontSize = 10.sp, letterSpacing = 1.5.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Text(title, style = MaterialTheme.typography.headlineLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                 }
                 action?.invoke()
             }
@@ -290,12 +290,12 @@ private fun HeaderAddButton(label: String, onClick: () -> Unit) {
 internal fun JournalCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.30f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp), content = content)
     }
 }
 
@@ -321,7 +321,7 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(30.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -343,7 +343,7 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
                 border = BorderStroke(1.dp, if (todayWorkouts.isEmpty()) MaterialTheme.colorScheme.outline.copy(alpha = 0.7f) else Clay.copy(alpha = 0.55f)),
                 shape = RoundedCornerShape(12.dp),
             ) {
-                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                         Column(Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -352,7 +352,7 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
                             }
                             Spacer(Modifier.height(14.dp))
                             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(if (volume > 0) volume.pretty() else setCount.toString(), fontSize = 52.sp, fontWeight = FontWeight.Normal, lineHeight = 54.sp)
+                                Text(if (volume > 0) volume.pretty() else setCount.toString(), fontSize = 44.sp, fontWeight = FontWeight.Light, lineHeight = 48.sp)
                                 Text(if (volume > 0) "kg moved" else if (setCount == 0) "sets — rest day" else "sets", fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 7.dp))
                             }
                             if (todayWorkouts.isNotEmpty()) Text("${todayWorkouts.size} session${if (todayWorkouts.size == 1) "" else "s"} today", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -375,18 +375,7 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
                     VolumeBarChart(weeklyVolume, Modifier.padding(top = 6.dp))
                 } else {
                     Text("No tonnage logged yet", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Box(
-                        Modifier.fillMaxWidth().height(112.dp).drawBehind {
-                            drawRoundRect(
-                                color = dashedBorderColor,
-                                style = Stroke(width = 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(7f, 7f))),
-                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(14.dp.toPx()),
-                            )
-                        },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("Log sets with reps and weight to see your weekly trend", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    Text("Log weighted sets to build your weekly trend.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -516,8 +505,8 @@ private fun WorkoutsScreen(
                 ) { Text("Personal records") }
             }
             if (workouts.isEmpty()) EmptyState("No workouts yet", "Log your first training session.")
-            workouts.forEach { workout ->
-                JournalCard(Modifier.clickable { onOpenWorkout(workout.id) }) {
+            workouts.forEachIndexed { index, workout ->
+                Column(Modifier.fillMaxWidth().clickable { onOpenWorkout(workout.id) }.padding(vertical = 8.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(workout.name ?: "Workout")
@@ -527,8 +516,9 @@ private fun WorkoutsScreen(
                             Icon(Icons.Outlined.Delete, "Delete workout")
                         }
                     }
-                    Text("${workout.setCount} sets  ·  ${workout.volumeKg.pretty()} kg volume", fontSize = 13.sp)
+                    Text("${workout.setCount} sets  ·  ${workout.volumeKg.pretty()} kg volume", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                if (index < workouts.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
             }
     }
     if (showAdd) WorkoutDialog(onDismiss = { showAdd = false }) { workout ->
@@ -736,8 +726,8 @@ private fun FoodScreen(viewModel: AppViewModel) {
             if (foods.isEmpty()) EmptyState("No food logged", "Add manually or scan a packaged food.")
             foods.groupBy { it.consumedOn }.forEach { (date, entries) ->
                 Text(date)
-                entries.forEach { food ->
-                    JournalCard {
+                entries.forEachIndexed { index, food ->
+                    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(food.name)
@@ -746,8 +736,9 @@ private fun FoodScreen(viewModel: AppViewModel) {
                             Text("${(food.calories ?: 0.0).pretty()} kcal")
                             IconButton(onClick = { viewModel.deleteFood(food) }) { Icon(Icons.Outlined.Delete, "Delete food") }
                         }
-                        Text("P ${(food.proteinG ?: 0.0).pretty()}g  ·  C ${(food.carbsG ?: 0.0).pretty()}g  ·  F ${(food.fatG ?: 0.0).pretty()}g", fontSize = 13.sp)
+                        Text("P ${(food.proteinG ?: 0.0).pretty()}g  ·  C ${(food.carbsG ?: 0.0).pretty()}g  ·  F ${(food.fatG ?: 0.0).pretty()}g", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    if (index < entries.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
                 }
             }
     }
@@ -777,7 +768,7 @@ internal fun AppField(value: String, onValueChange: (String) -> Unit, label: Str
         label = { Text(label) },
         modifier = modifier.fillMaxWidth(),
         singleLine = true,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = MaterialTheme.colorScheme.surface,
             unfocusedContainerColor = MaterialTheme.colorScheme.surface,
@@ -802,7 +793,7 @@ internal fun FormSheet(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        shape = RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp),
         tonalElevation = 0.dp,
         dragHandle = null,
     ) {
@@ -812,12 +803,12 @@ internal fun FormSheet(
                 .heightIn(max = 680.dp)
                 .navigationBarsPadding()
                 .imePadding()
-                .padding(horizontal = 20.dp, vertical = 22.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+                .padding(horizontal = 20.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(title, fontSize = 22.sp, fontWeight = FontWeight.Normal)
-                Text(description, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(title, style = MaterialTheme.typography.headlineMedium)
+                Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Column(
                 Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
@@ -828,7 +819,7 @@ internal fun FormSheet(
                 onClick = onPrimary,
                 enabled = primaryEnabled,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.onSurface,
                     contentColor = MaterialTheme.colorScheme.surface,
