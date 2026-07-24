@@ -336,13 +336,7 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
             }
         }
         item {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
-                ),
-                shape = RoundedCornerShape(8.dp),
-            ) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                         Column(Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -363,7 +357,6 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
                             Icon(Icons.Outlined.ArrowOutward, "Open workouts", tint = MaterialTheme.colorScheme.surface)
                         }
                     }
-                }
             }
         }
         item {
@@ -487,22 +480,13 @@ private fun WorkoutsScreen(
         "Each session holds the sets you logged that day.",
         action = { HeaderAddButton("New") { showAdd = true } },
     ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
-                    onClick = onTemplates,
-                    modifier = Modifier.weight(1f).height(50.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
-                ) { Text("Templates") }
-                Button(
-                    onClick = onRecords,
-                    modifier = Modifier.weight(1f).height(50.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
-                ) { Text("Personal records") }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("LIBRARY", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                WorkoutMenuRow("Templates", "Reusable training plans", onTemplates)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
+                WorkoutMenuRow("Personal records", "Best weight by exercise", onRecords)
             }
+            Text("RECENT SESSIONS", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (workouts.isEmpty()) EmptyState("No workouts yet", "Log your first training session.")
             workouts.forEachIndexed { index, workout ->
                 Column(Modifier.fillMaxWidth().clickable { onOpenWorkout(workout.id) }.padding(vertical = 8.dp)) {
@@ -523,6 +507,20 @@ private fun WorkoutsScreen(
     if (showAdd) WorkoutDialog(onDismiss = { showAdd = false }) { workout ->
         viewModel.addWorkout(workout)
         showAdd = false
+    }
+}
+
+@Composable
+private fun WorkoutMenuRow(title: String, subtitle: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(Icons.Outlined.ArrowOutward, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
