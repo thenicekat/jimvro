@@ -17,9 +17,9 @@ class JimvroApplication : Application() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             repository.removeBundledExercises()
             val preferences = getSharedPreferences("jimvro_settings", MODE_PRIVATE)
-            if (!preferences.getBoolean("stock_templates_seeded", false)) {
+            if (preferences.getInt("stock_templates_version", 0) < 2) {
                 repository.seedStockTemplates()
-                preferences.edit().putBoolean("stock_templates_seeded", true).apply()
+                preferences.edit().putInt("stock_templates_version", 2).apply()
             }
         }
     }

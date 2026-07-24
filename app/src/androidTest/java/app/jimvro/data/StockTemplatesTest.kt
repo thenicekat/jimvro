@@ -19,7 +19,7 @@ class StockTemplatesTest {
         repository.seedStockTemplates()
         val templates = repository.templates.first()
         assertEquals(listOf("Upper A", "Lower A", "Upper B", "Lower B", "Upper C"), templates.map { it.name })
-        assertEquals(listOf(6, 6, 8, 6, 8), templates.map { repository.templateLines(it.id).first().size })
+        assertEquals(listOf(6, 7, 8, 7, 6), templates.map { repository.templateLines(it.id).first().size })
         database.close()
     }
 }
