@@ -411,7 +411,7 @@ private fun TrackerSetRow(
                         onSetType(types[(types.indexOf(set.setType) + 1).mod(types.size)])
                     },
                     modifier = Modifier.width(64.dp), contentPadding = PaddingValues(horizontal = 2.dp),
-                ) { Text(set.setType.take(1).uppercase(), fontSize = 11.sp, color = Clay) }
+                ) { Text(when (set.setType) { "warmup" -> "WU"; "drop" -> "D"; else -> "W" }, fontSize = 11.sp, color = Clay) }
                 TrackerNumberField(reps, "Reps", Modifier.weight(1f), onComplete) { value ->
                     reps = value
                     onUpdate(value.toIntOrNull(), weight.toDoubleOrNull()?.storageWeight(settings))
