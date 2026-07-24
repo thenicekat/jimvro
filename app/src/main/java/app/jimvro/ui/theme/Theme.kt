@@ -70,13 +70,15 @@ private val DarkColors = darkColorScheme(
 
 @Composable
 fun JimvroTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+    val baseTypography = androidx.compose.material3.Typography()
     MaterialTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
-        typography = androidx.compose.material3.Typography(
-            displayLarge = androidx.compose.material3.Typography().displayLarge.copy(fontFamily = Fraunces),
-            displayMedium = androidx.compose.material3.Typography().displayMedium.copy(fontFamily = Fraunces),
-            headlineLarge = androidx.compose.material3.Typography().headlineLarge.copy(fontFamily = Fraunces),
-            headlineMedium = androidx.compose.material3.Typography().headlineMedium.copy(fontFamily = Fraunces),
+        typography = baseTypography.copy(
+            labelLarge = baseTypography.labelLarge.copy(fontWeight = FontWeight.Normal),
+            labelMedium = baseTypography.labelMedium.copy(fontWeight = FontWeight.Normal),
+            titleLarge = baseTypography.titleLarge.copy(fontWeight = FontWeight.Normal),
+            titleMedium = baseTypography.titleMedium.copy(fontWeight = FontWeight.Normal),
+            titleSmall = baseTypography.titleSmall.copy(fontWeight = FontWeight.Normal),
         ),
         content = content,
     )

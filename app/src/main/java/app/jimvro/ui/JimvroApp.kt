@@ -96,7 +96,6 @@ import app.jimvro.domain.Macros
 import app.jimvro.domain.scaleMacros
 import app.jimvro.ui.theme.Clay
 import app.jimvro.ui.theme.ClayMuted
-import app.jimvro.ui.theme.Fraunces
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
@@ -127,12 +126,19 @@ fun JimvroApp(viewModel: AppViewModel) {
     val currentRoute = backStack?.destination?.route ?: Destination.Today.route
     val current = Destination.entries.firstOrNull { it.route == currentRoute }
         ?: if (currentRoute.startsWith("workout/") || currentRoute == "templates" || currentRoute == "records") Destination.Workouts else Destination.Today
+    val navigateRoot: (String) -> Unit = { route ->
+        navController.navigate(route) {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text(current.label, fontWeight = FontWeight.Medium, fontSize = 16.sp) },
+                title = { Text(current.label, fontSize = 16.sp) },
                 actions = {
                     Card(
                         modifier = Modifier.padding(end = 12.dp).size(48.dp),
@@ -154,13 +160,7 @@ fun JimvroApp(viewModel: AppViewModel) {
                 Destination.entries.forEach { destination ->
                     NavigationBarItem(
                         selected = currentRoute == destination.route,
-                        onClick = {
-                            navController.navigate(destination.route) {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
+                        onClick = { navigateRoot(destination.route) },
                         icon = { Icon(destination.icon, null) },
                         label = { Text(destination.label) },
                         colors = NavigationBarItemDefaults.colors(
@@ -178,7 +178,7 @@ fun JimvroApp(viewModel: AppViewModel) {
             modifier = Modifier.padding(padding),
         ) {
             composable(Destination.Today.route) {
-                TodayScreen(viewModel) { route -> navController.navigate(route) }
+                TodayScreen(viewModel, navigateRoot)
             }
             composable(Destination.Workouts.route) {
                 WorkoutsScreen(
@@ -226,7 +226,7 @@ internal fun Page(
                 Column(Modifier.weight(1f)) {
                     Text(eyebrow.uppercase(), color = Clay, fontSize = 11.sp, letterSpacing = 1.8.sp)
                     Spacer(Modifier.height(8.dp))
-                    Text(title, fontFamily = Fraunces, fontSize = 36.sp, fontWeight = FontWeight.Normal, letterSpacing = (-0.4).sp)
+                    Text(title, fontSize = 32.sp, fontWeight = FontWeight.Normal, letterSpacing = (-0.3).sp)
                     Spacer(Modifier.height(8.dp))
                     Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp, lineHeight = 21.sp)
                 }
@@ -242,7 +242,7 @@ private fun HeaderAddButton(label: String, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         modifier = Modifier.height(42.dp),
-        shape = CircleShape,
+        shape = RoundedCornerShape(9.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.onSurface,
             contentColor = MaterialTheme.colorScheme.surface,
@@ -251,7 +251,7 @@ private fun HeaderAddButton(label: String, onClick: () -> Unit) {
     ) {
         Icon(Icons.Outlined.Add, null, Modifier.size(18.dp))
         Spacer(Modifier.width(6.dp))
-        Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        Text(label, fontSize = 13.sp)
     }
 }
 
@@ -259,7 +259,7 @@ private fun HeaderAddButton(label: String, onClick: () -> Unit) {
 internal fun JournalCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -284,6 +284,7 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
     val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
     val greeting = when { hour < 12 -> "Good morning."; hour < 18 -> "Good afternoon."; else -> "Good evening." }
     val dashedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.65f)
+    var showMeasurement by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -295,11 +296,11 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
                 Text(
                     SimpleDateFormat("EEEE, d MMMM", locale).format(Date()).uppercase(locale),
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.Normal,
                     letterSpacing = 2.2.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(greeting, fontFamily = Fraunces, fontSize = 40.sp, fontWeight = FontWeight.Medium, lineHeight = 44.sp)
+                Text(greeting, fontSize = 38.sp, fontWeight = FontWeight.Light, lineHeight = 42.sp, letterSpacing = (-0.6).sp)
             }
         }
         item {
@@ -308,19 +309,19 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
                     containerColor = if (todayWorkouts.isEmpty()) MaterialTheme.colorScheme.surface else ClayMuted.copy(alpha = 0.55f),
                 ),
                 border = BorderStroke(1.dp, if (todayWorkouts.isEmpty()) MaterialTheme.colorScheme.outline.copy(alpha = 0.7f) else Clay.copy(alpha = 0.3f)),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(12.dp),
             ) {
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                         Column(Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Icon(Icons.Outlined.FitnessCenter, null, Modifier.size(17.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("Training", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Training", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Spacer(Modifier.height(14.dp))
                             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(if (volume > 0) volume.pretty() else setCount.toString(), fontSize = 56.sp, fontWeight = FontWeight.SemiBold, lineHeight = 58.sp)
-                                Text(if (volume > 0) "kg moved" else if (setCount == 0) "sets — rest day" else "sets", fontSize = 18.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 7.dp))
+                                Text(if (volume > 0) volume.pretty() else setCount.toString(), fontSize = 52.sp, fontWeight = FontWeight.Normal, lineHeight = 54.sp)
+                                Text(if (volume > 0) "kg moved" else if (setCount == 0) "sets — rest day" else "sets", fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 7.dp))
                             }
                             if (todayWorkouts.isNotEmpty()) Text("${todayWorkouts.size} session${if (todayWorkouts.size == 1) "" else "s"} today", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -336,7 +337,7 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
         }
         item {
             JournalCard {
-                Text("Weekly volume", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Weekly volume", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("No tonnage logged yet", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Box(
                     Modifier.fillMaxWidth().height(112.dp).drawBehind {
@@ -365,7 +366,7 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
                     IconButton(onClick = { onNavigate(Destination.Food.route) }) { Icon(Icons.Outlined.ArrowOutward, "Open food") }
                 }
                 if (todayFoods.isEmpty()) {
-                    Text("—", fontSize = 32.sp, fontWeight = FontWeight.SemiBold)
+                    Text("—", fontSize = 30.sp)
                     Text("Nothing logged yet", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -386,19 +387,25 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
                     }
                     IconButton(onClick = { onNavigate(Destination.Body.route) }) { Icon(Icons.Outlined.ArrowOutward, "Open body") }
                 }
-                Text(measurements.firstOrNull()?.weightKg?.pretty() ?: "—", fontSize = 32.sp, fontWeight = FontWeight.SemiBold)
+                Text(measurements.firstOrNull()?.weightKg?.pretty() ?: "—", fontSize = 30.sp)
                 Text(if (measurements.isEmpty()) "No measurements yet" else "kg · latest reading", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("QUICK LOG", fontSize = 12.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("QUICK LOG", fontSize = 11.sp, letterSpacing = 1.6.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     QuickLogButton("Workout") { onNavigate(Destination.Workouts.route) }
                     QuickLogButton("Food") { onNavigate(Destination.Food.route) }
-                    QuickLogButton("Measurement") { onNavigate(Destination.Body.route) }
+                    QuickLogButton("Measurement") { showMeasurement = true }
                 }
             }
+        }
+    }
+    if (showMeasurement) {
+        MeasurementDialog(onDismiss = { showMeasurement = false }) {
+            viewModel.addMeasurement(it)
+            showMeasurement = false
         }
     }
 }
@@ -406,7 +413,7 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
 @Composable
 private fun MetricInline(value: String, unit: String) {
     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(value, fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
+        Text(value, fontSize = 28.sp)
         Text(unit, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
     }
 }
@@ -415,11 +422,11 @@ private fun MetricInline(value: String, unit: String) {
 private fun QuickLogButton(label: String, onClick: () -> Unit) {
     Button(
         onClick = onClick,
-        shape = RoundedCornerShape(50),
+        shape = RoundedCornerShape(8.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp),
-    ) { Text("+", color = Clay); Spacer(Modifier.width(5.dp)); Text(label, fontSize = 13.sp) }
+    ) { Icon(Icons.Outlined.Add, null, Modifier.size(15.dp), tint = Clay); Spacer(Modifier.width(5.dp)); Text(label, fontSize = 13.sp) }
 }
 
 @Composable
@@ -458,7 +465,7 @@ private fun WorkoutsScreen(
                 JournalCard(Modifier.clickable { onOpenWorkout(workout.id) }) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(workout.name ?: "Workout", fontWeight = FontWeight.Medium)
+                            Text(workout.name ?: "Workout")
                             Text(workout.performedOn, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                         }
                         IconButton(onClick = { viewModel.deleteWorkout(workout.id) }) {
@@ -490,7 +497,7 @@ private fun BodyScreen(viewModel: AppViewModel) {
                 JournalCard {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(measurement.weightKg?.let { "${it.pretty()} kg" } ?: "Body measurement", fontSize = 24.sp, fontFamily = Fraunces)
+                            Text(measurement.weightKg?.let { "${it.pretty()} kg" } ?: "Body measurement", fontSize = 22.sp)
                             Text(measurement.measuredOn, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         IconButton(onClick = { viewModel.deleteMeasurement(measurement) }) {
@@ -553,15 +560,15 @@ private fun FoodScreen(viewModel: AppViewModel) {
             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (foods.isEmpty()) EmptyState("No food logged", "Add manually or scan a packaged food.")
             foods.groupBy { it.consumedOn }.forEach { (date, entries) ->
-                Text(date, fontWeight = FontWeight.Medium)
+                Text(date)
                 entries.forEach { food ->
                     JournalCard {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text(food.name, fontWeight = FontWeight.Medium)
+                                Text(food.name)
                                 Text(food.meal.replaceFirstChar(Char::uppercase), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                             }
-                            Text("${(food.calories ?: 0.0).pretty()} kcal", fontWeight = FontWeight.Medium)
+                            Text("${(food.calories ?: 0.0).pretty()} kcal")
                             IconButton(onClick = { viewModel.deleteFood(food) }) { Icon(Icons.Outlined.Delete, "Delete food") }
                         }
                         Text("P ${(food.proteinG ?: 0.0).pretty()}g  ·  C ${(food.carbsG ?: 0.0).pretty()}g  ·  F ${(food.fatG ?: 0.0).pretty()}g", fontSize = 13.sp)
@@ -634,7 +641,7 @@ internal fun FormSheet(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(title, fontFamily = Fraunces, fontSize = 25.sp, fontWeight = FontWeight.Normal)
+                Text(title, fontSize = 22.sp, fontWeight = FontWeight.Normal)
                 Text(description, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Column(
@@ -653,7 +660,7 @@ internal fun FormSheet(
                     disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
                     disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
                 ),
-            ) { Text(primaryLabel, fontWeight = FontWeight.Medium) }
+            ) { Text(primaryLabel) }
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().height(40.dp)) { Text("Cancel") }
         }
     }
@@ -733,7 +740,7 @@ private fun FoodDialog(product: BarcodeProductEntity?, onDismiss: () -> Unit, on
                     fat = scaled.fatG?.pretty().orEmpty()
                 }
             }, "Serving (g)")
-            Text("MACROS", fontSize = 11.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("MACROS", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 AppField(calories, { calories = it }, "Calories", Modifier.weight(1f))
                 AppField(protein, { protein = it }, "Protein (g)", Modifier.weight(1f))

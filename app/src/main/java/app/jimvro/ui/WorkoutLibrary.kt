@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -57,7 +56,6 @@ import app.jimvro.data.ExerciseEntity
 import app.jimvro.data.TemplateSummary
 import app.jimvro.data.TemplateTarget
 import app.jimvro.ui.theme.Clay
-import app.jimvro.ui.theme.Fraunces
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -106,7 +104,7 @@ private fun TemplateCard(
     JournalCard {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
-                Text(template.name, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                Text(template.name, fontSize = 17.sp)
                 Text("${lines.size} exercises", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = { viewModel.deleteTemplate(template.id) }, modifier = Modifier.size(40.dp)) {
@@ -167,7 +165,7 @@ fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
                             Text(record.exerciseName, fontSize = 14.sp)
                             Text(record.performedOn, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Text("${record.weightKg.clean()} kg", fontSize = 18.sp, fontWeight = FontWeight.Medium)
+                        Text("${record.weightKg.clean()} kg", fontSize = 18.sp)
                         record.reps?.let { Text(" × $it", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                 }
@@ -183,7 +181,7 @@ fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
 }
 
 @Composable private fun LibraryAddButton(label: String, onClick: () -> Unit) {
-    Button(onClick = onClick, modifier = Modifier.height(40.dp), shape = CircleShape, contentPadding = PaddingValues(horizontal = 13.dp)) {
+    Button(onClick = onClick, modifier = Modifier.height(40.dp), shape = RoundedCornerShape(9.dp), contentPadding = PaddingValues(horizontal = 13.dp)) {
         Icon(Icons.Outlined.Add, null, Modifier.size(17.dp)); Spacer(Modifier.width(5.dp)); Text(label)
     }
 }
@@ -320,13 +318,13 @@ private fun ExercisePickerDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
         ) {
             Column(Modifier.padding(top = 20.dp)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Choose exercise", fontFamily = Fraunces, fontSize = 25.sp, fontWeight = FontWeight.Normal)
+                        Text("Choose exercise", fontSize = 22.sp, fontWeight = FontWeight.Normal)
                         Text("${exercises.size} movements", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     TextButton(onClick = onDismiss) { Text("Cancel") }

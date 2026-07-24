@@ -60,7 +60,6 @@ import app.jimvro.data.PreviousSet
 import app.jimvro.data.WorkoutSetDetail
 import app.jimvro.ui.theme.Clay
 import app.jimvro.ui.theme.ClayMuted
-import app.jimvro.ui.theme.Fraunces
 
 @Composable
 fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () -> Unit) {
@@ -89,11 +88,11 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                     Column(Modifier.weight(1f)) {
-                        Text(workout?.name ?: "Workout", fontFamily = Fraunces, fontSize = 32.sp, fontWeight = FontWeight.Normal)
+                        Text(workout?.name ?: "Workout", fontSize = 28.sp, fontWeight = FontWeight.Normal)
                         Text(workout?.performedOn.orEmpty(), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (totalVolume > 0) Column(horizontalAlignment = Alignment.End) {
-                        Text(totalVolume.prettyTracker(), fontSize = 22.sp, fontWeight = FontWeight.Medium)
+                        Text(totalVolume.prettyTracker(), fontSize = 21.sp)
                         Text("kg volume", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -182,12 +181,12 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
                 Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("$completed / ${sets.size} sets logged", Modifier.weight(1f), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (index < groups.lastIndex) {
-                        Button(onClick = { index++ }, shape = CircleShape) {
+                        Button(onClick = { index++ }, shape = RoundedCornerShape(9.dp)) {
                             Text("Next exercise")
                             Icon(Icons.Outlined.ChevronRight, null)
                         }
                     } else {
-                        Text("Last exercise", color = Clay, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text("Last exercise", color = Clay, fontSize = 14.sp)
                     }
                 }
             }
@@ -216,12 +215,12 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
 @Composable
 private fun EmptyWorkoutCard(onAdd: () -> Unit) {
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
     ) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Log your first set", fontFamily = Fraunces, fontSize = 24.sp)
+            Text("Log your first set", fontSize = 21.sp)
             Text("Choose an exercise, then record reps and weight as you train.", color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 20.sp)
             Button(
                 onClick = onAdd,
@@ -251,7 +250,7 @@ private fun ExerciseHeader(
         IconButton(onClick = onBack, enabled = canGoBack) { Icon(Icons.Outlined.ChevronLeft, "Previous exercise") }
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("EXERCISE $position OF $count", fontSize = 10.sp, letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(name, fontFamily = Fraunces, fontSize = 25.sp, fontWeight = FontWeight.Normal)
+            Text(name, fontSize = 22.sp, fontWeight = FontWeight.Normal)
         }
         IconButton(onClick = onForward, enabled = canGoForward) { Icon(Icons.Outlined.ChevronRight, "Next exercise") }
     }
