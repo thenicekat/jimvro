@@ -91,6 +91,7 @@ fun TemplatesScreen(viewModel: AppViewModel, onBack: () -> Unit, onWorkoutStarte
     if (createOpen) CreateTemplateSheet(
         exercises = exercises,
         onToggleFavorite = viewModel::toggleFavorite,
+        onCreateExercise = viewModel::findOrCreateExercise,
         onDismiss = { createOpen = false },
         onCreate = { name, targets ->
             scope.launch {
@@ -165,7 +166,7 @@ private fun TemplateCard(
             ) { Icon(Icons.Outlined.PlayArrow, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Start") }
         }
     }
-    if (addLine) AddTemplateLineSheet(exercises, viewModel::toggleFavorite, onDismiss = { addLine = false }) { exerciseId, sets, low, high ->
+    if (addLine) AddTemplateLineSheet(exercises, viewModel::toggleFavorite, viewModel::findOrCreateExercise, onDismiss = { addLine = false }) { exerciseId, sets, low, high ->
         viewModel.addTemplateLine(template.id, exerciseId, sets, low, high)
         addLine = false
     }
@@ -270,6 +271,7 @@ fun ExerciseProgressScreen(viewModel: AppViewModel, exerciseId: Long, onBack: ()
 @Composable private fun CreateTemplateSheet(
     exercises: List<ExerciseEntity>,
     onToggleFavorite: (Long) -> Unit,
+    onCreateExercise: suspend (String) -> ExerciseEntity,
     onDismiss: () -> Unit,
     onCreate: (String, List<TemplateTarget>) -> Unit,
 ) {
@@ -308,6 +310,7 @@ fun ExerciseProgressScreen(viewModel: AppViewModel, exerciseId: Long, onBack: ()
             selected = selected,
             onSelected = { selected = it },
             onToggleFavorite = onToggleFavorite,
+            onCreateExercise = onCreateExercise,
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TargetStepper("Sets", sets, 1..8, Modifier.weight(1f)) { sets = it }
@@ -351,6 +354,7 @@ internal fun ExerciseSearchField(
     selected: ExerciseEntity?,
     onSelected: (ExerciseEntity) -> Unit,
     onToggleFavorite: (Long) -> Unit = {},
+    onCreateExercise: suspend (String) -> ExerciseEntity,
 ) {
     var pickerOpen by remember { mutableStateOf(false) }
     Surface(
@@ -377,6 +381,7 @@ internal fun ExerciseSearchField(
             onDismiss = { pickerOpen = false },
             onSelected = { onSelected(it); pickerOpen = false },
             onToggleFavorite = onToggleFavorite,
+            onCreateExercise = onCreateExercise,
         )
     }
 }
@@ -387,16 +392,14 @@ private fun ExercisePickerDialog(
     onDismiss: () -> Unit,
     onSelected: (ExerciseEntity) -> Unit,
     onToggleFavorite: (Long) -> Unit,
+    onCreateExercise: suspend (String) -> ExerciseEntity,
 ) {
     var query by remember { mutableStateOf("") }
-    var bodyPart by remember { mutableStateOf<String?>(null) }
-    val bodyParts = listOf("chest", "back", "upper legs", "upper arms", "shoulders", "waist", "cardio")
-    val matches = remember(query, bodyPart, exercises) {
+    val scope = rememberCoroutineScope()
+    val matches = remember(query, exercises) {
         exercises.asSequence()
-            .filter { bodyPart == null || it.bodyPart.equals(bodyPart, ignoreCase = true) }
             .filter { exercise ->
-                query.isBlank() || listOf(exercise.name, exercise.muscleGroup, exercise.bodyPart, exercise.equipment, exercise.target)
-                    .any { it?.contains(query, ignoreCase = true) == true }
+                query.isBlank() || exercise.name.contains(query, ignoreCase = true)
             }
             .sortedWith(compareByDescending<ExerciseEntity> { it.favorite }.thenBy { it.name })
             .take(100)
@@ -414,8 +417,8 @@ private fun ExercisePickerDialog(
             Column(Modifier.padding(top = 12.dp)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Exercises", style = MaterialTheme.typography.headlineMedium)
-                        Text("Search or browse your library", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Exercise name", style = MaterialTheme.typography.headlineMedium)
+                        Text("Type a new name or reuse one you logged before", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     TextButton(onClick = onDismiss) { Text("Cancel") }
                 }
@@ -423,22 +426,19 @@ private fun ExercisePickerDialog(
                     value = query,
                     onValueChange = { query = it },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
-                    placeholder = { Text("Search name, muscle, equipment") },
+                    placeholder = { Text("e.g. Incline dumbbell press") },
                     leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(19.dp)) },
                     singleLine = true,
                     shape = RoundedCornerShape(8.dp),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Clay),
                 )
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp),
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
-                ) {
-                    FilterChip(selected = bodyPart == null, onClick = { bodyPart = null }, label = { Text("All") })
-                    bodyParts.forEach { part ->
-                        FilterChip(selected = bodyPart == part, onClick = { bodyPart = part }, label = { Text(part.replaceFirstChar(Char::uppercase)) })
-                    }
+                if (query.isNotBlank() && matches.none { it.name.equals(query.trim(), ignoreCase = true) }) {
+                    TextButton(
+                        onClick = { scope.launch { onSelected(onCreateExercise(query)) } },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
+                    ) { Icon(Icons.Outlined.Add, null); Spacer(Modifier.width(6.dp)); Text("Use “${query.trim()}”") }
                 }
-                Text("${matches.size}${if (matches.size == 100) "+" else ""} results", Modifier.padding(horizontal = 20.dp, vertical = 10.dp), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (matches.isNotEmpty()) Text("Previously used", Modifier.padding(horizontal = 20.dp, vertical = 10.dp), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 LazyColumn(Modifier.weight(1f)) {
                     items(matches, key = { it.id }) { exercise ->
                         Row(
@@ -472,6 +472,7 @@ private fun ExercisePickerDialog(
 @Composable private fun AddTemplateLineSheet(
     exercises: List<ExerciseEntity>,
     onToggleFavorite: (Long) -> Unit,
+    onCreateExercise: suspend (String) -> ExerciseEntity,
     onDismiss: () -> Unit,
     onAdd: (Long, Int, Int?, Int?) -> Unit,
 ) {
@@ -482,7 +483,7 @@ private fun ExercisePickerDialog(
     FormSheet("Add exercise", "Set a target; weight is logged during training.", "Add exercise", selected != null && (sets.toIntOrNull() ?: 0) > 0, {
         selected?.let { onAdd(it.id, sets.toIntOrNull() ?: 3, low.toIntOrNull(), high.toIntOrNull()) }
     }, onDismiss) {
-        ExerciseSearchField(exercises, selected, { selected = it }, onToggleFavorite)
+        ExerciseSearchField(exercises, selected, { selected = it }, onToggleFavorite, onCreateExercise)
         AppField(sets, { sets = it.filter(Char::isDigit) }, "Target sets")
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppField(low, { low = it.filter(Char::isDigit) }, "Min reps", Modifier.weight(1f))

@@ -408,6 +408,17 @@ interface ExerciseDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(values: List<ExerciseEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(value: ExerciseEntity): Long
+
+    @Query("SELECT * FROM exercises WHERE name = :name COLLATE NOCASE LIMIT 1")
+    suspend fun findByName(name: String): ExerciseEntity?
+
+    @Query("""DELETE FROM exercises WHERE id NOT IN (SELECT exerciseId FROM workout_sets)
+        AND id NOT IN (SELECT exerciseId FROM template_exercises)
+        AND (sourceId IS NOT NULL OR name IN ('Back Squat','Bench Press','Deadlift','Lat Pulldown','Overhead Press','Pull-up','Romanian Deadlift','Seated Cable Row'))""")
+    suspend fun removeBundledCatalog()
 }
 
 @Dao

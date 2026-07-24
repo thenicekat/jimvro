@@ -45,6 +45,7 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     fun finishWorkout(workoutId: Long) = viewModelScope.launch { repository.finishWorkout(workoutId) }
     fun setSuperset(workoutId: Long, exerciseIds: List<Long>, groupId: Int?) = viewModelScope.launch { repository.setSuperset(workoutId, exerciseIds, groupId) }
     fun toggleFavorite(exerciseId: Long) = viewModelScope.launch { repository.toggleFavorite(exerciseId) }
+    suspend fun findOrCreateExercise(name: String) = repository.findOrCreateExercise(name)
     fun deleteSet(setId: Long) = viewModelScope.launch { repository.deleteSet(setId) }
     fun previousSets(workoutId: Long, exerciseId: Long): Flow<List<PreviousSet>> = repository.previousSets(workoutId, exerciseId)
     fun exerciseProgress(exerciseId: Long): Flow<List<ExerciseProgressPoint>> = repository.exerciseProgress(exerciseId)

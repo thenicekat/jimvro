@@ -258,6 +258,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
         AddExerciseSheet(
             exercises = exercises,
             onToggleFavorite = viewModel::toggleFavorite,
+            onCreateExercise = viewModel::findOrCreateExercise,
             onDismiss = { showAddExercise = false },
             onAdd = { exerciseId, reps, weight ->
                 viewModel.appendSet(workoutId, exerciseId, reps, weight)
@@ -430,6 +431,7 @@ private fun TrackerNumberField(value: String, label: String, modifier: Modifier,
 private fun AddExerciseSheet(
     exercises: List<ExerciseEntity>,
     onToggleFavorite: (Long) -> Unit,
+    onCreateExercise: suspend (String) -> ExerciseEntity,
     onDismiss: () -> Unit,
     onAdd: (Long, Int?, Double?) -> Unit,
 ) {
@@ -444,7 +446,7 @@ private fun AddExerciseSheet(
         onPrimary = { selected?.let { onAdd(it.id, reps.toIntOrNull(), weight.toDoubleOrNull()) } },
         onDismiss = onDismiss,
     ) {
-        ExerciseSearchField(exercises, selected, { selected = it }, onToggleFavorite)
+        ExerciseSearchField(exercises, selected, { selected = it }, onToggleFavorite, onCreateExercise)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppField(reps, { reps = it.filter(Char::isDigit) }, "Reps", Modifier.weight(1f))
             AppField(weight, { weight = it.filter { char -> char.isDigit() || char == '.' } }, "Weight (kg)", Modifier.weight(1f))

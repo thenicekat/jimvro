@@ -1,13 +1,11 @@
 package app.jimvro.data
 
-import android.content.Context
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import org.json.JSONArray
 
 class JimvroRepository(private val database: JimvroDatabase) {
     val measurements = database.measurementDao().observeAll()
@@ -66,37 +64,14 @@ class JimvroRepository(private val database: JimvroDatabase) {
     suspend fun addFood(value: FoodEntryEntity) = database.foodDao().insert(value)
     suspend fun deleteFood(value: FoodEntryEntity) = database.foodDao().delete(value)
 
-    suspend fun seedExercises(context: Context) {
-        database.exerciseDao().insertAll(
-            listOf(
-                ExerciseEntity(name = "Back Squat", muscleGroup = "legs"),
-                ExerciseEntity(name = "Bench Press", muscleGroup = "chest"),
-                ExerciseEntity(name = "Deadlift", muscleGroup = "back"),
-                ExerciseEntity(name = "Lat Pulldown", muscleGroup = "back"),
-                ExerciseEntity(name = "Overhead Press", muscleGroup = "shoulders"),
-                ExerciseEntity(name = "Pull-up", muscleGroup = "back"),
-                ExerciseEntity(name = "Romanian Deadlift", muscleGroup = "legs"),
-                ExerciseEntity(name = "Seated Cable Row", muscleGroup = "back"),
-            ),
-        )
-        if (database.exerciseDao().importedCount() > 1_200) return
-        val raw = context.assets.open("exercises.json").bufferedReader().use { it.readText() }
-        val source = JSONArray(raw)
-        val imported = ArrayList<ExerciseEntity>(source.length())
-        for (index in 0 until source.length()) {
-            val item = source.getJSONObject(index)
-            imported += ExerciseEntity(
-                name = item.getString("name").replaceFirstChar(Char::uppercase),
-                muscleGroup = item.optString("muscleGroup", "other"),
-                sourceId = item.getString("sourceId"),
-                bodyPart = item.optString("bodyPart").ifBlank { null },
-                equipment = item.optString("equipment").ifBlank { null },
-                target = item.optString("target").ifBlank { null },
-                secondaryMuscles = item.optString("secondaryMuscles").ifBlank { null },
-                instructions = item.optString("instructions").ifBlank { null },
-            )
-        }
-        imported.chunked(250).forEach { database.exerciseDao().insertAll(it) }
+    suspend fun removeBundledExercises() = database.exerciseDao().removeBundledCatalog()
+
+    suspend fun findOrCreateExercise(rawName: String): ExerciseEntity {
+        val name = rawName.trim().replaceFirstChar(Char::uppercase)
+        require(name.isNotBlank()) { "Exercise name is required" }
+        database.exerciseDao().findByName(name)?.let { return it }
+        val id = database.exerciseDao().insert(ExerciseEntity(name = name))
+        return database.exerciseDao().findByName(name) ?: ExerciseEntity(id = id, name = name)
     }
 
     suspend fun lookupBarcode(rawCode: String): Result<BarcodeProductEntity> = withContext(Dispatchers.IO) {
