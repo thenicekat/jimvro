@@ -152,6 +152,7 @@ fun JimvroApp(
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route ?: Destination.Today.route
+    val isWorkoutSession = currentRoute.startsWith("workout/")
     val current = Destination.entries.firstOrNull { it.route == currentRoute }
         ?: if (currentRoute.startsWith("workout/") || currentRoute.startsWith("exercise/") || currentRoute == "templates" || currentRoute == "records") Destination.Workouts else Destination.Today
     val navigateRoot: (String) -> Unit = { route ->
@@ -198,6 +199,7 @@ fun JimvroApp(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
+            if (!isWorkoutSession) {
             TopAppBar(
                 title = { Text(current.label, fontSize = 16.sp) },
                 actions = {
@@ -236,8 +238,10 @@ fun JimvroApp(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
+            }
         },
         bottomBar = {
+            if (!isWorkoutSession) {
             NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
                 Destination.entries.forEach { destination ->
                     NavigationBarItem(
@@ -251,6 +255,7 @@ fun JimvroApp(
                         ),
                     )
                 }
+            }
             }
         },
     ) { padding ->

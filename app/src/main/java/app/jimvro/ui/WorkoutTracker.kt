@@ -119,15 +119,15 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 92.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 84.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 0.dp)) {
                     Icon(Icons.Outlined.ArrowBack, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("All sessions")
+                    Text("Workouts")
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                     Column(Modifier.weight(1f)) {
@@ -332,12 +332,16 @@ private fun ExerciseHeader(
     onForward: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onBack, enabled = canGoBack) { Icon(Icons.Outlined.ChevronLeft, "Previous exercise") }
-        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("EXERCISE $position OF $count", fontSize = 10.sp, letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(name, fontSize = 22.sp, fontWeight = FontWeight.Normal)
+        Column(Modifier.weight(1f)) {
+            Text("$position OF $count", fontSize = 10.sp, letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(name, fontSize = 21.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal)
         }
-        IconButton(onClick = onForward, enabled = canGoForward) { Icon(Icons.Outlined.ChevronRight, "Next exercise") }
+        IconButton(onClick = onBack, enabled = canGoBack, modifier = Modifier.size(40.dp)) {
+            Icon(Icons.Outlined.ChevronLeft, "Previous exercise")
+        }
+        IconButton(onClick = onForward, enabled = canGoForward, modifier = Modifier.size(40.dp)) {
+            Icon(Icons.Outlined.ChevronRight, "Next exercise")
+        }
     }
 }
 
@@ -393,25 +397,25 @@ private fun TrackerSetRow(
     Column(
         Modifier
             .fillMaxWidth()
-            .background(if (done) ClayMuted.copy(alpha = 0.22f) else MaterialTheme.colorScheme.background, RoundedCornerShape(8.dp))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .background(if (done) ClayMuted.copy(alpha = 0.14f) else MaterialTheme.colorScheme.background)
+            .padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
             if (showLabels) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Spacer(Modifier.width(98.dp))
+                Spacer(Modifier.width(88.dp))
                 Text("Reps", Modifier.weight(1f), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("${settings.weightUnit}", Modifier.weight(1f), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.width(36.dp))
+                Spacer(Modifier.width(32.dp))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(set.setNumber.toString().padStart(2, '0'), Modifier.width(26.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(set.setNumber.toString().padStart(2, '0'), Modifier.width(24.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 TextButton(
                     onClick = {
                         val types = listOf("working", "warmup", "drop")
                         onSetType(types[(types.indexOf(set.setType) + 1).mod(types.size)])
                     },
-                    modifier = Modifier.width(64.dp), contentPadding = PaddingValues(horizontal = 2.dp),
-                ) { Text(when (set.setType) { "warmup" -> "WU"; "drop" -> "D"; else -> "W" }, fontSize = 11.sp, color = Clay) }
+                    modifier = Modifier.width(56.dp), contentPadding = PaddingValues(horizontal = 0.dp),
+                ) { Text(when (set.setType) { "warmup" -> "Warm"; "drop" -> "Drop"; else -> "Work" }, fontSize = 10.sp, color = Clay) }
                 TrackerNumberField(reps, "Reps", Modifier.weight(1f), onComplete) { value ->
                     reps = value
                     onUpdate(value.toIntOrNull(), weight.toDoubleOrNull()?.storageWeight(settings))
@@ -420,7 +424,7 @@ private fun TrackerSetRow(
                     weight = value
                     onUpdate(reps.toIntOrNull(), value.toDoubleOrNull()?.storageWeight(settings))
                 }
-                IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Delete, "Delete set", Modifier.size(17.dp)) }
+                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) { Icon(Icons.Outlined.Delete, "Delete set", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
     }
@@ -431,7 +435,7 @@ private fun TrackerNumberField(value: String, label: String, modifier: Modifier,
     OutlinedTextField(
         value = value,
         onValueChange = { if (it.matches(Regex("^\\d*\\.?\\d*$"))) onChange(it) },
-        modifier = modifier,
+        modifier = modifier.height(48.dp),
         placeholder = { Text("—") },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
