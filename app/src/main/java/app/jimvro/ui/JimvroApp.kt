@@ -134,6 +134,7 @@ private enum class Destination(val route: String, val label: String, val icon: I
 
 private fun today(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 private fun Double.pretty(): String = if (this % 1.0 == 0.0) toInt().toString() else "%.1f".format(this)
+private fun Long.compactDuration(): String = if (this >= 3600) "%dh %02dm".format(this / 3600, (this % 3600) / 60) else "%dm".format(this / 60)
 
 @Suppress("DEPRECATION")
 private fun Configuration.primaryLocale(): Locale =
@@ -566,7 +567,14 @@ private fun WorkoutsScreen(
                             Icon(Icons.Outlined.Delete, "Delete workout")
                         }
                     }
-                    Text("${workout.setCount} sets  ·  ${workout.volumeKg.pretty()} kg volume", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        buildString {
+                            append("${workout.setCount} sets  ·  ${workout.volumeKg.pretty()} kg volume")
+                            workout.finishedAt?.let { append("  ·  ${((it - workout.createdAt).coerceAtLeast(0) / 1_000).compactDuration()}") }
+                        },
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 if (index < workouts.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
             }

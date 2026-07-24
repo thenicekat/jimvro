@@ -168,6 +168,8 @@ data class WorkoutSummary(
     val name: String?,
     val setCount: Int,
     val volumeKg: Double,
+    val createdAt: Long,
+    val finishedAt: Long?,
 )
 
 data class WorkoutSetDetail(
@@ -254,7 +256,7 @@ interface MeasurementDao {
 @Dao
 interface WorkoutDao {
     @Query(
-        """SELECT w.id, w.performedOn, w.name, COUNT(s.id) AS setCount,
+        """SELECT w.id, w.performedOn, w.name, COUNT(s.id) AS setCount, w.createdAt, w.finishedAt,
             COALESCE(SUM(COALESCE(s.reps, 0) * COALESCE(s.weightKg, 0)), 0.0) AS volumeKg
             FROM workouts w LEFT JOIN workout_sets s ON s.workoutId = w.id
             GROUP BY w.id ORDER BY w.performedOn DESC, w.createdAt DESC""",
