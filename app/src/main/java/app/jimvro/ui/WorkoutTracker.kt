@@ -80,11 +80,12 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
     val totalVolume = sets.sumOf { (it.reps ?: 0) * (it.weightKg ?: 0.0) }
     val completed = sets.count { it.reps != null || it.weightKg != null }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 92.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 0.dp)) {
@@ -102,12 +103,6 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
                             Text(totalVolume.prettyTracker(), fontSize = 21.sp)
                             Text("kg volume", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Button(
-                            onClick = { viewModel.finishWorkout(workoutId); showSummary = true },
-                            enabled = sets.isNotEmpty() && workout?.finishedAt == null,
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp),
-                        ) { Text(if (workout?.finishedAt == null) "Finish" else "Finished") }
                     }
                 }
             }
@@ -237,6 +232,25 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
                     Text("Add exercise")
                 }
             }
+        }
+        }
+        Row(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("$completed/${sets.size} sets", Modifier.weight(1f), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Button(
+                onClick = { viewModel.finishWorkout(workoutId); showSummary = true },
+                enabled = sets.isNotEmpty() && workout?.finishedAt == null,
+                modifier = Modifier.height(48.dp),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp),
+            ) { Text(if (workout?.finishedAt == null) "Finish workout" else "Finished") }
         }
     }
 

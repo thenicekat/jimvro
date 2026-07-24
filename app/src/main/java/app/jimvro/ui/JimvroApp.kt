@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
@@ -290,12 +291,11 @@ private fun HeaderAddButton(label: String, onClick: () -> Unit) {
 internal fun JournalCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.30f)),
+        shape = RoundedCornerShape(0.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp), content = content)
+        Column(Modifier.padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(9.dp), content = content)
     }
 }
 
@@ -338,10 +338,9 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
         item {
             Card(
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
                 ),
-                border = BorderStroke(1.dp, if (todayWorkouts.isEmpty()) MaterialTheme.colorScheme.outline.copy(alpha = 0.7f) else Clay.copy(alpha = 0.55f)),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(8.dp),
             ) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
@@ -800,7 +799,7 @@ internal fun FormSheet(
         Column(
             Modifier
                 .fillMaxWidth()
-                .heightIn(max = 680.dp)
+                .fillMaxHeight(0.92f)
                 .navigationBarsPadding()
                 .imePadding()
                 .padding(horizontal = 20.dp, vertical = 20.dp),
