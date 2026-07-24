@@ -126,7 +126,7 @@ fun JimvroApp(viewModel: AppViewModel) {
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route ?: Destination.Today.route
     val current = Destination.entries.firstOrNull { it.route == currentRoute }
-        ?: if (currentRoute.startsWith("workout/")) Destination.Workouts else Destination.Today
+        ?: if (currentRoute.startsWith("workout/") || currentRoute == "templates" || currentRoute == "records") Destination.Workouts else Destination.Today
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -181,8 +181,17 @@ fun JimvroApp(viewModel: AppViewModel) {
                 TodayScreen(viewModel) { route -> navController.navigate(route) }
             }
             composable(Destination.Workouts.route) {
-                WorkoutsScreen(viewModel) { id -> navController.navigate("workout/$id") }
+                WorkoutsScreen(
+                    viewModel,
+                    onOpenWorkout = { id -> navController.navigate("workout/$id") },
+                    onTemplates = { navController.navigate("templates") },
+                    onRecords = { navController.navigate("records") },
+                )
             }
+            composable("templates") {
+                TemplatesScreen(viewModel, onBack = { navController.popBackStack() }) { id -> navController.navigate("workout/$id") }
+            }
+            composable("records") { RecordsScreen(viewModel, onBack = { navController.popBackStack() }) }
             composable(
                 route = "workout/{id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType }),
@@ -200,7 +209,7 @@ fun JimvroApp(viewModel: AppViewModel) {
 }
 
 @Composable
-private fun Page(
+internal fun Page(
     eyebrow: String,
     title: String,
     subtitle: String,
@@ -210,14 +219,14 @@ private fun Page(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(32.dp),
+        verticalArrangement = Arrangement.spacedBy(26.dp),
     ) {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
-                    Text(eyebrow.uppercase(), color = Clay, fontSize = 12.sp, fontWeight = FontWeight.Medium, letterSpacing = 2.sp)
+                    Text(eyebrow.uppercase(), color = Clay, fontSize = 11.sp, letterSpacing = 1.8.sp)
                     Spacer(Modifier.height(8.dp))
-                    Text(title, fontFamily = Fraunces, fontSize = 40.sp, fontWeight = FontWeight.Medium, letterSpacing = (-0.5).sp)
+                    Text(title, fontFamily = Fraunces, fontSize = 36.sp, fontWeight = FontWeight.Normal, letterSpacing = (-0.4).sp)
                     Spacer(Modifier.height(8.dp))
                     Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp, lineHeight = 21.sp)
                 }
@@ -247,12 +256,12 @@ private fun HeaderAddButton(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun JournalCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+internal fun JournalCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
@@ -414,7 +423,12 @@ private fun QuickLogButton(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun WorkoutsScreen(viewModel: AppViewModel, onOpenWorkout: (Long) -> Unit) {
+private fun WorkoutsScreen(
+    viewModel: AppViewModel,
+    onOpenWorkout: (Long) -> Unit,
+    onTemplates: () -> Unit,
+    onRecords: () -> Unit,
+) {
     val workouts by viewModel.workouts.collectAsStateWithLifecycle()
     var showAdd by remember { mutableStateOf(false) }
     Page(
@@ -423,6 +437,22 @@ private fun WorkoutsScreen(viewModel: AppViewModel, onOpenWorkout: (Long) -> Uni
         "Each session holds the sets you logged that day.",
         action = { HeaderAddButton("New") { showAdd = true } },
     ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = onTemplates,
+                    modifier = Modifier.weight(1f).height(50.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
+                ) { Text("Templates") }
+                Button(
+                    onClick = onRecords,
+                    modifier = Modifier.weight(1f).height(50.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
+                ) { Text("Personal records") }
+            }
             if (workouts.isEmpty()) EmptyState("No workouts yet", "Log your first training session.")
             workouts.forEach { workout ->
                 JournalCard(Modifier.clickable { onOpenWorkout(workout.id) }) {
@@ -552,8 +582,8 @@ private fun FoodScreen(viewModel: AppViewModel) {
 @Composable
 private fun EmptyState(title: String, subtitle: String) {
     JournalCard {
-        Text(title, fontFamily = Fraunces, fontSize = 20.sp)
-        Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(title, fontSize = 16.sp)
+        Text(subtitle, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -570,7 +600,7 @@ internal fun AppField(value: String, onValueChange: (String) -> Unit, label: Str
             focusedContainerColor = MaterialTheme.colorScheme.surface,
             unfocusedContainerColor = MaterialTheme.colorScheme.surface,
             focusedBorderColor = Clay,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.75f),
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
         ),
     )
 }
@@ -605,7 +635,7 @@ internal fun FormSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(title, fontFamily = Fraunces, fontSize = 26.sp, fontWeight = FontWeight.Medium)
+                Text(title, fontFamily = Fraunces, fontSize = 25.sp, fontWeight = FontWeight.Normal)
                 Text(description, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             content()

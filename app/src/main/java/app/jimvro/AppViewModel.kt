@@ -13,12 +13,16 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import app.jimvro.data.WorkoutSetDetail
+import app.jimvro.data.PreviousSet
+import app.jimvro.data.TemplateLine
 
 class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     val measurements = repository.measurements.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val workouts = repository.workouts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val foodEntries = repository.foodEntries.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val exercises = repository.exercises.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val templates = repository.templates.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val personalRecords = repository.personalRecords.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun addMeasurement(value: MeasurementEntity) = viewModelScope.launch { repository.addMeasurement(value) }
     fun deleteMeasurement(value: MeasurementEntity) = viewModelScope.launch { repository.deleteMeasurement(value) }
@@ -34,6 +38,15 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     fun updateSet(setId: Long, reps: Int?, weightKg: Double?, rpe: Double? = null) =
         viewModelScope.launch { repository.updateSet(setId, reps, weightKg, rpe) }
     fun deleteSet(setId: Long) = viewModelScope.launch { repository.deleteSet(setId) }
+    fun previousSets(workoutId: Long, exerciseId: Long): Flow<List<PreviousSet>> = repository.previousSets(workoutId, exerciseId)
+    fun templateLines(id: Long): Flow<List<TemplateLine>> = repository.templateLines(id)
+    fun createTemplate(name: String, notes: String? = null) = viewModelScope.launch { repository.createTemplate(name, notes) }
+    fun deleteTemplate(id: Long) = viewModelScope.launch { repository.deleteTemplate(id) }
+    fun addTemplateLine(templateId: Long, exerciseId: Long, targetSets: Int, repLow: Int?, repHigh: Int?) = viewModelScope.launch {
+        repository.addTemplateLine(templateId, exerciseId, targetSets, repLow, repHigh)
+    }
+    fun deleteTemplateLine(id: Long) = viewModelScope.launch { repository.deleteTemplateLine(id) }
+    suspend fun startFromTemplate(templateId: Long, date: String): Long = repository.startFromTemplate(templateId, date)
     fun addFood(value: FoodEntryEntity) = viewModelScope.launch { repository.addFood(value) }
     fun deleteFood(value: FoodEntryEntity) = viewModelScope.launch { repository.deleteFood(value) }
     suspend fun lookupBarcode(code: String) = repository.lookupBarcode(code)

@@ -14,6 +14,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "measurements", indices = [Index("measuredOn")])
@@ -87,6 +89,32 @@ data class SavedFoodEntity(
     val fatG: Double? = null,
 )
 
+@Entity(tableName = "workout_templates")
+data class WorkoutTemplateEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val notes: String? = null,
+    val position: Int = 0,
+)
+
+@Entity(
+    tableName = "template_exercises",
+    foreignKeys = [
+        ForeignKey(entity = WorkoutTemplateEntity::class, parentColumns = ["id"], childColumns = ["templateId"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(entity = ExerciseEntity::class, parentColumns = ["id"], childColumns = ["exerciseId"], onDelete = ForeignKey.RESTRICT),
+    ],
+    indices = [Index("templateId"), Index("exerciseId")],
+)
+data class TemplateExerciseEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val templateId: Long,
+    val exerciseId: Long,
+    val position: Int = 0,
+    val targetSets: Int = 3,
+    val repLow: Int? = null,
+    val repHigh: Int? = null,
+)
+
 @Entity(tableName = "food_entries", indices = [Index("consumedOn")])
 data class FoodEntryEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -133,6 +161,37 @@ data class WorkoutSetDetail(
     val rpe: Double?,
 )
 
+data class PreviousSet(
+    val setNumber: Int,
+    val reps: Int?,
+    val weightKg: Double?,
+    val performedOn: String,
+)
+
+data class PersonalRecord(
+    val exerciseId: Long,
+    val exerciseName: String,
+    val muscleGroup: String,
+    val weightKg: Double,
+    val reps: Int?,
+    val performedOn: String,
+    val workoutId: Long,
+)
+
+data class TemplateSummary(val id: Long, val name: String, val notes: String?, val exerciseCount: Int)
+
+data class TemplateLine(
+    val id: Long,
+    val templateId: Long,
+    val exerciseId: Long,
+    val exerciseName: String,
+    val muscleGroup: String,
+    val position: Int,
+    val targetSets: Int,
+    val repLow: Int?,
+    val repHigh: Int?,
+)
+
 data class DailyNutrition(
     val calories: Double,
     val proteinG: Double,
@@ -176,6 +235,31 @@ interface WorkoutDao {
     )
     fun observeSetDetails(workoutId: Long): Flow<List<WorkoutSetDetail>>
 
+    @Query(
+        """SELECT s.setNumber, s.reps, s.weightKg, w.performedOn
+        FROM workout_sets s INNER JOIN workouts w ON w.id = s.workoutId
+        WHERE s.exerciseId = :exerciseId AND s.workoutId = (
+          SELECT s2.workoutId FROM workout_sets s2 INNER JOIN workouts w2 ON w2.id = s2.workoutId
+          WHERE s2.exerciseId = :exerciseId AND s2.workoutId != :workoutId
+            AND w2.performedOn <= (SELECT performedOn FROM workouts WHERE id = :workoutId)
+          ORDER BY w2.performedOn DESC, w2.id DESC LIMIT 1
+        ) ORDER BY s.setNumber""",
+    )
+    fun observePreviousSets(workoutId: Long, exerciseId: Long): Flow<List<PreviousSet>>
+
+    @Query(
+        """SELECT s.exerciseId, e.name AS exerciseName, e.muscleGroup, s.weightKg,
+        s.reps, w.performedOn, w.id AS workoutId
+        FROM workout_sets s INNER JOIN workouts w ON w.id = s.workoutId
+        INNER JOIN exercises e ON e.id = s.exerciseId
+        WHERE s.weightKg IS NOT NULL AND s.id = (
+          SELECT s2.id FROM workout_sets s2 INNER JOIN workouts w2 ON w2.id = s2.workoutId
+          WHERE s2.exerciseId = s.exerciseId AND s2.weightKg IS NOT NULL
+          ORDER BY s2.weightKg DESC, w2.performedOn DESC, COALESCE(s2.reps, 0) DESC LIMIT 1
+        ) ORDER BY e.name""",
+    )
+    fun observePersonalRecords(): Flow<List<PersonalRecord>>
+
     @Insert suspend fun insertWorkout(value: WorkoutEntity): Long
     @Insert suspend fun insertSet(value: WorkoutSetEntity): Long
     @Query("UPDATE workout_sets SET reps = :reps, weightKg = :weightKg, rpe = :rpe WHERE id = :setId")
@@ -206,6 +290,32 @@ interface WorkoutDao {
                 weightKg = weightKg,
             ),
         )
+}
+
+@Dao
+interface TemplateDao {
+    @Query(
+        """SELECT t.id, t.name, t.notes, COUNT(l.id) AS exerciseCount
+        FROM workout_templates t LEFT JOIN template_exercises l ON l.templateId = t.id
+        GROUP BY t.id ORDER BY t.position, t.id""",
+    )
+    fun observeTemplates(): Flow<List<TemplateSummary>>
+
+    @Query(
+        """SELECT l.id, l.templateId, l.exerciseId, e.name AS exerciseName, e.muscleGroup,
+        l.position, l.targetSets, l.repLow, l.repHigh
+        FROM template_exercises l INNER JOIN exercises e ON e.id = l.exerciseId
+        WHERE l.templateId = :templateId ORDER BY l.position, l.id""",
+    )
+    fun observeLines(templateId: Long): Flow<List<TemplateLine>>
+
+    @Insert suspend fun insertTemplate(value: WorkoutTemplateEntity): Long
+    @Insert suspend fun insertLine(value: TemplateExerciseEntity): Long
+    @Query("DELETE FROM workout_templates WHERE id = :id") suspend fun deleteTemplate(id: Long)
+    @Query("DELETE FROM template_exercises WHERE id = :id") suspend fun deleteLine(id: Long)
+    @Query("SELECT * FROM workout_templates WHERE id = :id") suspend fun template(id: Long): WorkoutTemplateEntity?
+    @Query("SELECT * FROM template_exercises WHERE templateId = :id ORDER BY position, id") suspend fun lines(id: Long): List<TemplateExerciseEntity>
+
 }
 
 @Dao
@@ -251,10 +361,12 @@ interface FoodDao {
         WorkoutEntity::class,
         WorkoutSetEntity::class,
         SavedFoodEntity::class,
+        WorkoutTemplateEntity::class,
+        TemplateExerciseEntity::class,
         FoodEntryEntity::class,
         BarcodeProductEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class JimvroDatabase : RoomDatabase() {
@@ -262,10 +374,21 @@ abstract class JimvroDatabase : RoomDatabase() {
     abstract fun workoutDao(): WorkoutDao
     abstract fun exerciseDao(): ExerciseDao
     abstract fun foodDao(): FoodDao
+    abstract fun templateDao(): TemplateDao
 
     companion object {
         fun create(context: Context): JimvroDatabase =
             Room.databaseBuilder(context, JimvroDatabase::class.java, "jimvro.db")
+                .addMigrations(MIGRATION_1_2)
                 .build()
+
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS workout_templates (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT NULL, notes TEXT, position INTEGER NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS template_exercises (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, templateId INTEGER NOT NULL, exerciseId INTEGER NOT NULL, position INTEGER NOT NULL, targetSets INTEGER NOT NULL, repLow INTEGER, repHigh INTEGER, FOREIGN KEY(templateId) REFERENCES workout_templates(id) ON UPDATE NO ACTION ON DELETE CASCADE, FOREIGN KEY(exerciseId) REFERENCES exercises(id) ON UPDATE NO ACTION ON DELETE RESTRICT)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_template_exercises_templateId ON template_exercises(templateId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_template_exercises_exerciseId ON template_exercises(exerciseId)")
+            }
+        }
     }
 }

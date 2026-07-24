@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.jimvro.AppViewModel
 import app.jimvro.data.ExerciseEntity
+import app.jimvro.data.PreviousSet
 import app.jimvro.data.WorkoutSetDetail
 import app.jimvro.ui.theme.Clay
 import app.jimvro.ui.theme.ClayMuted
@@ -88,7 +89,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                     Column(Modifier.weight(1f)) {
-                        Text(workout?.name ?: "Workout", fontFamily = Fraunces, fontSize = 32.sp, fontWeight = FontWeight.Medium)
+                        Text(workout?.name ?: "Workout", fontFamily = Fraunces, fontSize = 32.sp, fontWeight = FontWeight.Normal)
                         Text(workout?.performedOn.orEmpty(), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (totalVolume > 0) Column(horizontalAlignment = Alignment.End) {
@@ -132,6 +133,13 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
                     canGoForward = index < groups.lastIndex,
                     onBack = { index-- },
                     onForward = { index++ },
+                )
+            }
+            item {
+                PreviousPerformance(
+                    viewModel = viewModel,
+                    workoutId = workoutId,
+                    exerciseId = current.first().exerciseId,
                 )
             }
             current.forEachIndexed { rowIndex, set ->
@@ -195,7 +203,7 @@ private fun EmptyWorkoutCard(onAdd: () -> Unit) {
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
     ) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Log your first set", fontFamily = Fraunces, fontSize = 24.sp)
@@ -228,10 +236,46 @@ private fun ExerciseHeader(
         IconButton(onClick = onBack, enabled = canGoBack) { Icon(Icons.Outlined.ChevronLeft, "Previous exercise") }
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("$position / $count", fontSize = 11.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(name, fontFamily = Fraunces, fontSize = 25.sp, fontWeight = FontWeight.Medium)
+            Text(name, fontFamily = Fraunces, fontSize = 25.sp, fontWeight = FontWeight.Normal)
         }
         IconButton(onClick = onForward, enabled = canGoForward) { Icon(Icons.Outlined.ChevronRight, "Next exercise") }
     }
+}
+
+@Composable
+private fun PreviousPerformance(
+    viewModel: AppViewModel,
+    workoutId: Long,
+    exerciseId: Long,
+) {
+    val previous by viewModel.previousSets(workoutId, exerciseId)
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    if (previous.isEmpty()) return
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(ClayMuted.copy(alpha = 0.22f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Row(Modifier.fillMaxWidth()) {
+            Text("LAST TIME", Modifier.weight(1f), fontSize = 10.sp, letterSpacing = 1.3.sp, color = Clay)
+            Text(previous.first().performedOn, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text(
+            previous.joinToString("  ·  ") { it.summary() },
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun PreviousSet.summary(): String = when {
+    reps != null && weightKg != null -> "$reps × ${weightKg.prettyTracker()} kg"
+    reps != null -> "$reps reps"
+    weightKg != null -> "${weightKg.prettyTracker()} kg"
+    else -> "—"
 }
 
 @Composable
@@ -245,9 +289,9 @@ private fun TrackerSetRow(
     var weight by remember(set.id, set.weightKg) { mutableStateOf(set.weightKg?.prettyTracker().orEmpty()) }
     val done = reps.isNotBlank() || weight.isNotBlank()
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = if (done) ClayMuted.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, if (done) Clay.copy(alpha = 0.35f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.65f)),
+        border = BorderStroke(1.dp, if (done) Clay.copy(alpha = 0.28f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
