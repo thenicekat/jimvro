@@ -28,6 +28,7 @@ import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -60,6 +61,7 @@ import app.jimvro.data.PreviousSet
 import app.jimvro.data.WorkoutSetDetail
 import app.jimvro.ui.theme.Clay
 import app.jimvro.ui.theme.ClayMuted
+import kotlinx.coroutines.delay
 
 @Composable
 fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () -> Unit) {
@@ -69,7 +71,12 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
     val groups = sets.groupBy { it.exerciseId }.values.toList()
     var index by remember { mutableIntStateOf(0) }
     var showAddExercise by remember { mutableStateOf(false) }
+    var showSummary by remember { mutableStateOf(false) }
+    var restRemaining by remember { mutableIntStateOf(0) }
     LaunchedEffect(groups.size) { index = index.coerceIn(0, (groups.size - 1).coerceAtLeast(0)) }
+    LaunchedEffect(restRemaining) {
+        if (restRemaining > 0) { delay(1_000); restRemaining-- }
+    }
 
     val totalVolume = sets.sumOf { (it.reps ?: 0) * (it.weightKg ?: 0.0) }
     val completed = sets.count { it.reps != null || it.weightKg != null }
@@ -91,11 +98,31 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
                         Text(workout?.name ?: "Workout", fontSize = 28.sp, fontWeight = FontWeight.Normal)
                         Text(workout?.performedOn.orEmpty(), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (totalVolume > 0) Column(horizontalAlignment = Alignment.End) {
-                        Text(totalVolume.prettyTracker(), fontSize = 21.sp)
-                        Text("kg volume", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (totalVolume > 0) {
+                            Text(totalVolume.prettyTracker(), fontSize = 21.sp)
+                            Text("kg volume", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Button(
+                            onClick = { viewModel.finishWorkout(workoutId); showSummary = true },
+                            enabled = sets.isNotEmpty() && workout?.finishedAt == null,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp),
+                        ) { Text(if (workout?.finishedAt == null) "Finish" else "Finished") }
                     }
                 }
+            }
+        }
+
+        if (restRemaining > 0) item {
+            Row(
+                Modifier.fillMaxWidth().background(ClayMuted.copy(alpha = 0.4f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Rest", Modifier.weight(1f), fontSize = 13.sp)
+                Text("${restRemaining / 60}:${(restRemaining % 60).toString().padStart(2, '0')}", fontSize = 18.sp)
+                TextButton(onClick = { restRemaining += 30 }) { Text("+30s") }
+                TextButton(onClick = { restRemaining = 0 }) { Text("Skip") }
             }
         }
 
@@ -151,6 +178,8 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
                         set = set,
                         showLabels = rowIndex == 0,
                         onUpdate = { reps, weight -> viewModel.updateSet(set.id, reps, weight, set.rpe) },
+                        onSetType = { viewModel.updateSetType(set.id, it) },
+                        onComplete = { restRemaining = 90 },
                         onDelete = { viewModel.deleteSet(set.id) },
                     )
                 }
@@ -191,6 +220,18 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
                 }
             }
             item {
+                if (index < groups.lastIndex) {
+                    TextButton(
+                        onClick = {
+                            viewModel.setSuperset(
+                                workoutId,
+                                listOf(current.first().exerciseId, groups[index + 1].first().exerciseId),
+                                index + 1,
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Pair with next as superset") }
+                }
                 TextButton(onClick = { showAddExercise = true }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Outlined.Add, null)
                     Spacer(Modifier.width(6.dp))
@@ -203,11 +244,21 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
     if (showAddExercise) {
         AddExerciseSheet(
             exercises = exercises,
+            onToggleFavorite = viewModel::toggleFavorite,
             onDismiss = { showAddExercise = false },
             onAdd = { exerciseId, reps, weight ->
                 viewModel.appendSet(workoutId, exerciseId, reps, weight)
                 showAddExercise = false
             },
+        )
+    }
+    if (showSummary) {
+        AlertDialog(
+            onDismissRequest = { showSummary = false },
+            title = { Text("Workout complete") },
+            text = { Text("$completed sets · ${totalVolume.prettyTracker()} kg volume · ${groups.size} exercises") },
+            confirmButton = { TextButton(onClick = { showSummary = false; onBack() }) { Text("Done") } },
+            dismissButton = { TextButton(onClick = { showSummary = false }) { Text("Stay") } },
         )
     }
 }
@@ -297,6 +348,8 @@ private fun TrackerSetRow(
     set: WorkoutSetDetail,
     showLabels: Boolean,
     onUpdate: (Int?, Double?) -> Unit,
+    onSetType: (String) -> Unit,
+    onComplete: () -> Unit,
     onDelete: () -> Unit,
 ) {
     var reps by remember(set.id, set.reps) { mutableStateOf(set.reps?.toString().orEmpty()) }
@@ -309,7 +362,14 @@ private fun TrackerSetRow(
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("SET ${set.setNumber}", Modifier.weight(1f), fontSize = 11.sp, letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("SET ${set.setNumber}", fontSize = 11.sp, letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(
+                    onClick = {
+                        val types = listOf("working", "warmup", "drop")
+                        onSetType(types[(types.indexOf(set.setType) + 1).mod(types.size)])
+                    },
+                    modifier = Modifier.weight(1f),
+                ) { Text(set.setType.replaceFirstChar(Char::uppercase), fontSize = 11.sp) }
                 IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.Delete, "Delete set", Modifier.size(18.dp)) }
             }
             if (showLabels) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -327,7 +387,7 @@ private fun TrackerSetRow(
                     onUpdate(reps.toIntOrNull(), value.toDoubleOrNull())
                 }
                 Box(
-                    Modifier.size(48.dp).background(if (done) Clay else ClayMuted, RoundedCornerShape(12.dp)),
+                    Modifier.size(48.dp).background(if (done) Clay else ClayMuted, RoundedCornerShape(12.dp)).clickable(enabled = done) { onComplete() },
                     contentAlignment = Alignment.Center,
                 ) { Icon(Icons.Outlined.Check, null, tint = if (done) MaterialTheme.colorScheme.surface else Clay) }
             }
@@ -355,6 +415,7 @@ private fun TrackerNumberField(value: String, label: String, modifier: Modifier,
 @Composable
 private fun AddExerciseSheet(
     exercises: List<ExerciseEntity>,
+    onToggleFavorite: (Long) -> Unit,
     onDismiss: () -> Unit,
     onAdd: (Long, Int?, Double?) -> Unit,
 ) {
@@ -369,7 +430,7 @@ private fun AddExerciseSheet(
         onPrimary = { selected?.let { onAdd(it.id, reps.toIntOrNull(), weight.toDoubleOrNull()) } },
         onDismiss = onDismiss,
     ) {
-        ExerciseSearchField(exercises, selected) { selected = it }
+        ExerciseSearchField(exercises, selected, { selected = it }, onToggleFavorite)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppField(reps, { reps = it.filter(Char::isDigit) }, "Reps", Modifier.weight(1f))
             AppField(weight, { weight = it.filter { char -> char.isDigit() || char == '.' } }, "Weight (kg)", Modifier.weight(1f))

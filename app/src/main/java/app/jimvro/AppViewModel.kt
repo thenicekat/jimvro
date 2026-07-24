@@ -25,6 +25,8 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     val exercises = repository.exercises.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val templates = repository.templates.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val personalRecords = repository.personalRecords.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val recentExercises = repository.recentExercises.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val progressPhotos = repository.progressPhotos.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun addMeasurement(value: MeasurementEntity) = viewModelScope.launch { repository.addMeasurement(value) }
     fun deleteMeasurement(value: MeasurementEntity) = viewModelScope.launch { repository.deleteMeasurement(value) }
@@ -39,6 +41,10 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
         viewModelScope.launch { repository.appendSet(workoutId, exerciseId, reps, weightKg) }
     fun updateSet(setId: Long, reps: Int?, weightKg: Double?, rpe: Double? = null) =
         viewModelScope.launch { repository.updateSet(setId, reps, weightKg, rpe) }
+    fun updateSetType(setId: Long, setType: String) = viewModelScope.launch { repository.updateSetType(setId, setType) }
+    fun finishWorkout(workoutId: Long) = viewModelScope.launch { repository.finishWorkout(workoutId) }
+    fun setSuperset(workoutId: Long, exerciseIds: List<Long>, groupId: Int?) = viewModelScope.launch { repository.setSuperset(workoutId, exerciseIds, groupId) }
+    fun toggleFavorite(exerciseId: Long) = viewModelScope.launch { repository.toggleFavorite(exerciseId) }
     fun deleteSet(setId: Long) = viewModelScope.launch { repository.deleteSet(setId) }
     fun previousSets(workoutId: Long, exerciseId: Long): Flow<List<PreviousSet>> = repository.previousSets(workoutId, exerciseId)
     fun exerciseProgress(exerciseId: Long): Flow<List<ExerciseProgressPoint>> = repository.exerciseProgress(exerciseId)
@@ -50,6 +56,8 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
         repository.addTemplateLine(templateId, exerciseId, targetSets, repLow, repHigh)
     }
     fun deleteTemplateLine(id: Long) = viewModelScope.launch { repository.deleteTemplateLine(id) }
+    fun updateTemplateLine(id: Long, sets: Int, low: Int?, high: Int?) = viewModelScope.launch { repository.updateTemplateLine(id, sets, low, high) }
+    fun reorderTemplateLines(lines: List<TemplateLine>) = viewModelScope.launch { repository.reorderTemplateLines(lines) }
     suspend fun startFromTemplate(templateId: Long, date: String): Long = repository.startFromTemplate(templateId, date)
     fun addFood(value: FoodEntryEntity) = viewModelScope.launch { repository.addFood(value) }
     fun deleteFood(value: FoodEntryEntity) = viewModelScope.launch { repository.deleteFood(value) }

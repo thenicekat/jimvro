@@ -46,6 +46,7 @@ data class ExerciseEntity(
     val target: String? = null,
     val secondaryMuscles: String? = null,
     val instructions: String? = null,
+    val favorite: Boolean = false,
 )
 
 @Entity(tableName = "workouts", indices = [Index("performedOn")])
@@ -55,6 +56,7 @@ data class WorkoutEntity(
     val name: String? = null,
     val notes: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
+    val finishedAt: Long? = null,
 )
 
 @Entity(
@@ -83,6 +85,8 @@ data class WorkoutSetEntity(
     val reps: Int? = null,
     val weightKg: Double? = null,
     val rpe: Double? = null,
+    val setType: String = "working",
+    val supersetGroup: Int? = null,
 )
 
 @Entity(tableName = "saved_foods", indices = [Index("name")])
@@ -119,6 +123,17 @@ data class TemplateExerciseEntity(
     val targetSets: Int = 3,
     val repLow: Int? = null,
     val repHigh: Int? = null,
+    val setType: String = "working",
+    val supersetGroup: Int? = null,
+)
+
+@Entity(tableName = "progress_photos", indices = [Index("capturedOn")])
+data class ProgressPhotoEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val capturedOn: String,
+    val uri: String,
+    val notes: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
 )
 
 @Entity(tableName = "food_entries", indices = [Index("consumedOn")])
@@ -165,6 +180,8 @@ data class WorkoutSetDetail(
     val reps: Int?,
     val weightKg: Double?,
     val rpe: Double?,
+    val setType: String,
+    val supersetGroup: Int?,
 )
 
 data class PreviousSet(
@@ -202,6 +219,8 @@ data class TemplateLine(
     val targetSets: Int,
     val repLow: Int?,
     val repHigh: Int?,
+    val setType: String,
+    val supersetGroup: Int?,
 )
 
 data class TemplateTarget(
@@ -209,6 +228,8 @@ data class TemplateTarget(
     val targetSets: Int,
     val repLow: Int?,
     val repHigh: Int?,
+    val setType: String = "working",
+    val supersetGroup: Int? = null,
 )
 
 data class DailyNutrition(
@@ -248,7 +269,7 @@ interface WorkoutDao {
 
     @Query(
         """SELECT s.id, s.workoutId, s.exerciseId, e.name AS exerciseName,
-            e.muscleGroup, s.setNumber, s.reps, s.weightKg, s.rpe
+            e.muscleGroup, s.setNumber, s.reps, s.weightKg, s.rpe, s.setType, s.supersetGroup
             FROM workout_sets s INNER JOIN exercises e ON e.id = s.exerciseId
             WHERE s.workoutId = :workoutId ORDER BY s.id""",
     )
@@ -293,6 +314,10 @@ interface WorkoutDao {
     @Insert suspend fun insertSet(value: WorkoutSetEntity): Long
     @Query("UPDATE workout_sets SET reps = :reps, weightKg = :weightKg, rpe = :rpe WHERE id = :setId")
     suspend fun updateSet(setId: Long, reps: Int?, weightKg: Double?, rpe: Double?)
+    @Query("UPDATE workout_sets SET setType = :setType WHERE id = :setId") suspend fun updateSetType(setId: Long, setType: String)
+    @Query("UPDATE workout_sets SET supersetGroup = :groupId WHERE exerciseId IN (:exerciseIds) AND workoutId = :workoutId")
+    suspend fun setSuperset(workoutId: Long, exerciseIds: List<Long>, groupId: Int?)
+    @Query("UPDATE workouts SET finishedAt = :finishedAt WHERE id = :workoutId") suspend fun finishWorkout(workoutId: Long, finishedAt: Long)
 
     @Query("DELETE FROM workout_sets WHERE id = :setId")
     suspend fun deleteSet(setId: Long)
@@ -332,7 +357,7 @@ interface TemplateDao {
 
     @Query(
         """SELECT l.id, l.templateId, l.exerciseId, e.name AS exerciseName, e.muscleGroup,
-        l.position, l.targetSets, l.repLow, l.repHigh
+        l.position, l.targetSets, l.repLow, l.repHigh, l.setType, l.supersetGroup
         FROM template_exercises l INNER JOIN exercises e ON e.id = l.exerciseId
         WHERE l.templateId = :templateId ORDER BY l.position, l.id""",
     )
@@ -352,6 +377,8 @@ interface TemplateDao {
                     targetSets = target.targetSets,
                     repLow = target.repLow,
                     repHigh = target.repHigh,
+                    setType = target.setType,
+                    supersetGroup = target.supersetGroup,
                 ),
             )
         }
@@ -359,6 +386,9 @@ interface TemplateDao {
     }
     @Query("DELETE FROM workout_templates WHERE id = :id") suspend fun deleteTemplate(id: Long)
     @Query("DELETE FROM template_exercises WHERE id = :id") suspend fun deleteLine(id: Long)
+    @Query("UPDATE template_exercises SET position = :position WHERE id = :id") suspend fun updatePosition(id: Long, position: Int)
+    @Query("UPDATE template_exercises SET targetSets = :sets, repLow = :low, repHigh = :high WHERE id = :id")
+    suspend fun updateLine(id: Long, sets: Int, low: Int?, high: Int?)
     @Query("SELECT * FROM workout_templates WHERE id = :id") suspend fun template(id: Long): WorkoutTemplateEntity?
     @Query("SELECT * FROM template_exercises WHERE templateId = :id ORDER BY position, id") suspend fun lines(id: Long): List<TemplateExerciseEntity>
 
@@ -368,12 +398,24 @@ interface TemplateDao {
 interface ExerciseDao {
     @Query("SELECT * FROM exercises ORDER BY name")
     fun observeAll(): Flow<List<ExerciseEntity>>
+    @Query("UPDATE exercises SET favorite = NOT favorite WHERE id = :id") suspend fun toggleFavorite(id: Long)
+    @Query("""SELECT e.* FROM exercises e INNER JOIN workout_sets s ON s.exerciseId = e.id
+        GROUP BY e.id ORDER BY MAX(s.id) DESC LIMIT 20""")
+    fun observeRecent(): Flow<List<ExerciseEntity>>
 
     @Query("SELECT COUNT(*) FROM exercises WHERE sourceId IS NOT NULL")
     suspend fun importedCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(values: List<ExerciseEntity>)
+}
+
+@Dao
+interface ProgressPhotoDao {
+    @Query("SELECT * FROM progress_photos ORDER BY capturedOn DESC, createdAt DESC")
+    fun observeAll(): Flow<List<ProgressPhotoEntity>>
+    @Insert suspend fun insert(value: ProgressPhotoEntity): Long
+    @Delete suspend fun delete(value: ProgressPhotoEntity)
 }
 
 @Dao
@@ -414,8 +456,9 @@ interface FoodDao {
         TemplateExerciseEntity::class,
         FoodEntryEntity::class,
         BarcodeProductEntity::class,
+        ProgressPhotoEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class JimvroDatabase : RoomDatabase() {
@@ -424,11 +467,12 @@ abstract class JimvroDatabase : RoomDatabase() {
     abstract fun exerciseDao(): ExerciseDao
     abstract fun foodDao(): FoodDao
     abstract fun templateDao(): TemplateDao
+    abstract fun progressPhotoDao(): ProgressPhotoDao
 
     companion object {
         fun create(context: Context): JimvroDatabase =
             Room.databaseBuilder(context, JimvroDatabase::class.java, "jimvro.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -449,6 +493,18 @@ abstract class JimvroDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE exercises ADD COLUMN secondaryMuscles TEXT")
                 db.execSQL("ALTER TABLE exercises ADD COLUMN instructions TEXT")
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_exercises_sourceId ON exercises(sourceId)")
+            }
+        }
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE exercises ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE workouts ADD COLUMN finishedAt INTEGER")
+                db.execSQL("ALTER TABLE workout_sets ADD COLUMN setType TEXT NOT NULL DEFAULT 'working'")
+                db.execSQL("ALTER TABLE workout_sets ADD COLUMN supersetGroup INTEGER")
+                db.execSQL("ALTER TABLE template_exercises ADD COLUMN setType TEXT NOT NULL DEFAULT 'working'")
+                db.execSQL("ALTER TABLE template_exercises ADD COLUMN supersetGroup INTEGER")
+                db.execSQL("CREATE TABLE IF NOT EXISTS progress_photos (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, capturedOn TEXT NOT NULL, uri TEXT NOT NULL, notes TEXT, createdAt INTEGER NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_progress_photos_capturedOn ON progress_photos(capturedOn)")
             }
         }
     }

@@ -17,6 +17,8 @@ class JimvroRepository(private val database: JimvroDatabase) {
     val foodEntries = database.foodDao().observeAll()
     val templates = database.templateDao().observeTemplates()
     val personalRecords = database.workoutDao().observePersonalRecords()
+    val recentExercises = database.exerciseDao().observeRecent()
+    val progressPhotos = database.progressPhotoDao().observeAll()
 
     fun foodOn(date: String): Flow<List<FoodEntryEntity>> = database.foodDao().observeOn(date)
     fun nutritionOn(date: String): Flow<DailyNutrition> = database.foodDao().observeNutritionOn(date)
@@ -39,6 +41,10 @@ class JimvroRepository(private val database: JimvroDatabase) {
         database.workoutDao().appendSet(workoutId, exerciseId, reps, weightKg)
     suspend fun updateSet(setId: Long, reps: Int?, weightKg: Double?, rpe: Double? = null) =
         database.workoutDao().updateSet(setId, reps, weightKg, rpe)
+    suspend fun updateSetType(setId: Long, setType: String) = database.workoutDao().updateSetType(setId, setType)
+    suspend fun finishWorkout(workoutId: Long) = database.workoutDao().finishWorkout(workoutId, System.currentTimeMillis())
+    suspend fun setSuperset(workoutId: Long, exerciseIds: List<Long>, groupId: Int?) = database.workoutDao().setSuperset(workoutId, exerciseIds, groupId)
+    suspend fun toggleFavorite(exerciseId: Long) = database.exerciseDao().toggleFavorite(exerciseId)
     suspend fun deleteSet(setId: Long) = database.workoutDao().deleteSet(setId)
     suspend fun createTemplate(name: String, notes: String? = null) =
         database.templateDao().insertTemplate(WorkoutTemplateEntity(name = name, notes = notes))
@@ -48,10 +54,12 @@ class JimvroRepository(private val database: JimvroDatabase) {
     suspend fun addTemplateLine(templateId: Long, exerciseId: Long, targetSets: Int, repLow: Int?, repHigh: Int?) =
         database.templateDao().insertLine(TemplateExerciseEntity(templateId = templateId, exerciseId = exerciseId, targetSets = targetSets, repLow = repLow, repHigh = repHigh))
     suspend fun deleteTemplateLine(id: Long) = database.templateDao().deleteLine(id)
+    suspend fun updateTemplateLine(id: Long, sets: Int, low: Int?, high: Int?) = database.templateDao().updateLine(id, sets, low, high)
+    suspend fun reorderTemplateLines(lines: List<TemplateLine>) = lines.forEachIndexed { index, line -> database.templateDao().updatePosition(line.id, index) }
     suspend fun startFromTemplate(templateId: Long, date: String): Long {
         val template = database.templateDao().template(templateId) ?: error("Template not found")
         val stubs = database.templateDao().lines(templateId).flatMap { line ->
-            (1..line.targetSets).map { number -> WorkoutSetEntity(workoutId = 0, exerciseId = line.exerciseId, setNumber = number) }
+            (1..line.targetSets).map { number -> WorkoutSetEntity(workoutId = 0, exerciseId = line.exerciseId, setNumber = number, setType = line.setType, supersetGroup = line.supersetGroup) }
         }
         return database.workoutDao().createWorkout(WorkoutEntity(performedOn = date, name = template.name), stubs)
     }

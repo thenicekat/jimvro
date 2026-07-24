@@ -25,6 +25,10 @@ import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
@@ -55,6 +59,7 @@ import app.jimvro.AppViewModel
 import app.jimvro.data.ExerciseEntity
 import app.jimvro.data.TemplateSummary
 import app.jimvro.data.TemplateTarget
+import app.jimvro.data.TemplateLine
 import app.jimvro.ui.theme.Clay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -81,6 +86,7 @@ fun TemplatesScreen(viewModel: AppViewModel, onBack: () -> Unit, onWorkoutStarte
     }
     if (createOpen) CreateTemplateSheet(
         exercises = exercises,
+        onToggleFavorite = viewModel::toggleFavorite,
         onDismiss = { createOpen = false },
         onCreate = { name, targets ->
             scope.launch {
@@ -101,6 +107,7 @@ private fun TemplateCard(
     val lines by viewModel.templateLines(template.id).collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
     var addLine by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<TemplateLine?>(null) }
     JournalCard {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
@@ -111,8 +118,8 @@ private fun TemplateCard(
                 Icon(Icons.Outlined.Delete, "Delete template", Modifier.size(18.dp))
             }
         }
-        lines.forEach { line ->
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        lines.forEachIndexed { index, line ->
+            Row(Modifier.fillMaxWidth().clickable { editing = line }, verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(line.exerciseName, fontSize = 14.sp)
                     Text(
@@ -121,6 +128,16 @@ private fun TemplateCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                IconButton(
+                    onClick = { if (index > 0) viewModel.reorderTemplateLines(lines.toMutableList().apply { add(index - 1, removeAt(index)) }) },
+                    enabled = index > 0,
+                    modifier = Modifier.size(32.dp),
+                ) { Icon(Icons.Outlined.KeyboardArrowUp, "Move up", Modifier.size(17.dp)) }
+                IconButton(
+                    onClick = { if (index < lines.lastIndex) viewModel.reorderTemplateLines(lines.toMutableList().apply { add(index + 1, removeAt(index)) }) },
+                    enabled = index < lines.lastIndex,
+                    modifier = Modifier.size(32.dp),
+                ) { Icon(Icons.Outlined.KeyboardArrowDown, "Move down", Modifier.size(17.dp)) }
                 IconButton(onClick = { viewModel.deleteTemplateLine(line.id) }, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Outlined.Delete, "Remove exercise", Modifier.size(16.dp))
                 }
@@ -144,9 +161,31 @@ private fun TemplateCard(
             ) { Icon(Icons.Outlined.PlayArrow, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Start") }
         }
     }
-    if (addLine) AddTemplateLineSheet(exercises, onDismiss = { addLine = false }) { exerciseId, sets, low, high ->
+    if (addLine) AddTemplateLineSheet(exercises, viewModel::toggleFavorite, onDismiss = { addLine = false }) { exerciseId, sets, low, high ->
         viewModel.addTemplateLine(template.id, exerciseId, sets, low, high)
         addLine = false
+    }
+    editing?.let { line ->
+        EditTemplateLineSheet(line, onDismiss = { editing = null }) { sets, low, high ->
+            viewModel.updateTemplateLine(line.id, sets, low, high)
+            editing = null
+        }
+    }
+}
+
+@Composable
+private fun EditTemplateLineSheet(line: TemplateLine, onDismiss: () -> Unit, onSave: (Int, Int?, Int?) -> Unit) {
+    var sets by remember(line.id) { mutableStateOf(line.targetSets.toString()) }
+    var low by remember(line.id) { mutableStateOf(line.repLow?.toString().orEmpty()) }
+    var high by remember(line.id) { mutableStateOf(line.repHigh?.toString().orEmpty()) }
+    FormSheet("Edit ${line.exerciseName}", "Adjust working targets.", "Save changes", (sets.toIntOrNull() ?: 0) > 0, {
+        onSave(sets.toIntOrNull() ?: 1, low.toIntOrNull(), high.toIntOrNull())
+    }, onDismiss) {
+        AppField(sets, { sets = it.filter(Char::isDigit) }, "Target sets")
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            AppField(low, { low = it.filter(Char::isDigit) }, "Min reps", Modifier.weight(1f))
+            AppField(high, { high = it.filter(Char::isDigit) }, "Max reps", Modifier.weight(1f))
+        }
     }
 }
 
@@ -226,6 +265,7 @@ fun ExerciseProgressScreen(viewModel: AppViewModel, exerciseId: Long, onBack: ()
 
 @Composable private fun CreateTemplateSheet(
     exercises: List<ExerciseEntity>,
+    onToggleFavorite: (Long) -> Unit,
     onDismiss: () -> Unit,
     onCreate: (String, List<TemplateTarget>) -> Unit,
 ) {
@@ -263,6 +303,7 @@ fun ExerciseProgressScreen(viewModel: AppViewModel, exerciseId: Long, onBack: ()
             exercises = exercises.filterNot { exercise -> targets.any { it.exerciseId == exercise.id } },
             selected = selected,
             onSelected = { selected = it },
+            onToggleFavorite = onToggleFavorite,
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TargetStepper("Sets", sets, 1..8, Modifier.weight(1f)) { sets = it }
@@ -305,6 +346,7 @@ internal fun ExerciseSearchField(
     exercises: List<ExerciseEntity>,
     selected: ExerciseEntity?,
     onSelected: (ExerciseEntity) -> Unit,
+    onToggleFavorite: (Long) -> Unit = {},
 ) {
     var pickerOpen by remember { mutableStateOf(false) }
     Surface(
@@ -330,6 +372,7 @@ internal fun ExerciseSearchField(
             exercises = exercises,
             onDismiss = { pickerOpen = false },
             onSelected = { onSelected(it); pickerOpen = false },
+            onToggleFavorite = onToggleFavorite,
         )
     }
 }
@@ -339,6 +382,7 @@ private fun ExercisePickerDialog(
     exercises: List<ExerciseEntity>,
     onDismiss: () -> Unit,
     onSelected: (ExerciseEntity) -> Unit,
+    onToggleFavorite: (Long) -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
     var bodyPart by remember { mutableStateOf<String?>(null) }
@@ -350,6 +394,7 @@ private fun ExercisePickerDialog(
                 query.isBlank() || listOf(exercise.name, exercise.muscleGroup, exercise.bodyPart, exercise.equipment, exercise.target)
                     .any { it?.contains(query, ignoreCase = true) == true }
             }
+            .sortedWith(compareByDescending<ExerciseEntity> { it.favorite }.thenBy { it.name })
             .take(100)
             .toList()
     }
@@ -401,6 +446,13 @@ private fun ExercisePickerDialog(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                            IconButton(onClick = { onToggleFavorite(exercise.id) }) {
+                                Icon(
+                                    if (exercise.favorite) Icons.Outlined.Star else Icons.Outlined.StarBorder,
+                                    if (exercise.favorite) "Remove favorite" else "Add favorite",
+                                    tint = if (exercise.favorite) Clay else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                         HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
                     }
@@ -412,6 +464,7 @@ private fun ExercisePickerDialog(
 
 @Composable private fun AddTemplateLineSheet(
     exercises: List<ExerciseEntity>,
+    onToggleFavorite: (Long) -> Unit,
     onDismiss: () -> Unit,
     onAdd: (Long, Int, Int?, Int?) -> Unit,
 ) {
@@ -422,7 +475,7 @@ private fun ExercisePickerDialog(
     FormSheet("Add exercise", "Set a target; weight is logged during training.", "Add exercise", selected != null && (sets.toIntOrNull() ?: 0) > 0, {
         selected?.let { onAdd(it.id, sets.toIntOrNull() ?: 3, low.toIntOrNull(), high.toIntOrNull()) }
     }, onDismiss) {
-        ExerciseSearchField(exercises, selected) { selected = it }
+        ExerciseSearchField(exercises, selected, { selected = it }, onToggleFavorite)
         AppField(sets, { sets = it.filter(Char::isDigit) }, "Target sets")
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppField(low, { low = it.filter(Char::isDigit) }, "Min reps", Modifier.weight(1f))
