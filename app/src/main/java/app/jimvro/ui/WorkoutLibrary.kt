@@ -151,7 +151,7 @@ private fun TemplateCard(
 }
 
 @Composable
-fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
+fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit, onExercise: (Long) -> Unit) {
     val records by viewModel.personalRecords.collectAsStateWithLifecycle()
     Page("Training", "Personal records", "Your heaviest logged set for each exercise.") {
         BackLink(onBack)
@@ -160,7 +160,7 @@ fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             Text(group.uppercase(), fontSize = 11.sp, letterSpacing = 1.5.sp, color = Clay)
             JournalCard {
                 items.forEach { record ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().clickable { onExercise(record.exerciseId) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(record.exerciseName, fontSize = 14.sp)
                             Text(record.performedOn, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -170,6 +170,44 @@ fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun ExerciseProgressScreen(viewModel: AppViewModel, exerciseId: Long, onBack: () -> Unit) {
+    val exercises by viewModel.exercises.collectAsStateWithLifecycle()
+    val progress by viewModel.exerciseProgress(exerciseId).collectAsStateWithLifecycle(initialValue = emptyList())
+    val exercise = exercises.firstOrNull { it.id == exerciseId }
+    Page(
+        eyebrow = exercise?.muscleGroup ?: "Exercise",
+        title = exercise?.name ?: "Progress",
+        subtitle = "Session volume and top weight over time.",
+    ) {
+        BackLink(onBack)
+        if (progress.size >= 2) {
+            JournalCard {
+                Text("Volume trend", fontSize = 14.sp)
+                LineTrendChart(progress.map { ChartPoint(it.performedOn.takeLast(5), it.volumeKg) })
+            }
+            val weighted = progress.filter { it.maxWeightKg != null }
+            if (weighted.size >= 2) {
+                JournalCard {
+                    Text("Top weight", fontSize = 14.sp)
+                    LineTrendChart(weighted.map { ChartPoint(it.performedOn.takeLast(5), it.maxWeightKg!!) }, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        } else {
+            Text("Log this exercise in two sessions to unlock its trend.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text("SESSIONS", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        progress.asReversed().forEachIndexed { index, point ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(point.performedOn, Modifier.weight(1f), fontSize = 13.sp)
+                Text("${point.volumeKg.clean()} kg vol", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                point.maxWeightKg?.let { Text("  ·  ${it.clean()} kg", fontSize = 12.sp) }
+            }
+            if (index < progress.lastIndex) androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
         }
     }
 }

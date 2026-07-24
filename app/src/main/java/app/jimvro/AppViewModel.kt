@@ -16,6 +16,7 @@ import app.jimvro.data.WorkoutSetDetail
 import app.jimvro.data.PreviousSet
 import app.jimvro.data.TemplateLine
 import app.jimvro.data.TemplateTarget
+import app.jimvro.data.ExerciseProgressPoint
 
 class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     val measurements = repository.measurements.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -40,6 +41,7 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
         viewModelScope.launch { repository.updateSet(setId, reps, weightKg, rpe) }
     fun deleteSet(setId: Long) = viewModelScope.launch { repository.deleteSet(setId) }
     fun previousSets(workoutId: Long, exerciseId: Long): Flow<List<PreviousSet>> = repository.previousSets(workoutId, exerciseId)
+    fun exerciseProgress(exerciseId: Long): Flow<List<ExerciseProgressPoint>> = repository.exerciseProgress(exerciseId)
     fun templateLines(id: Long): Flow<List<TemplateLine>> = repository.templateLines(id)
     fun createTemplate(name: String, notes: String? = null) = viewModelScope.launch { repository.createTemplate(name, notes) }
     suspend fun createTemplate(name: String, targets: List<TemplateTarget>) = repository.createTemplate(name, targets)

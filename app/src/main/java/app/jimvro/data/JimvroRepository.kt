@@ -25,6 +25,8 @@ class JimvroRepository(private val database: JimvroDatabase) {
     fun workoutSets(id: Long): Flow<List<WorkoutSetDetail>> = database.workoutDao().observeSetDetails(id)
     fun previousSets(workoutId: Long, exerciseId: Long): Flow<List<PreviousSet>> =
         database.workoutDao().observePreviousSets(workoutId, exerciseId)
+    fun exerciseProgress(exerciseId: Long): Flow<List<ExerciseProgressPoint>> =
+        database.workoutDao().observeExerciseProgress(exerciseId)
     fun templateLines(id: Long): Flow<List<TemplateLine>> = database.templateDao().observeLines(id)
 
     suspend fun addMeasurement(value: MeasurementEntity) = database.measurementDao().insert(value)

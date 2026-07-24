@@ -184,6 +184,12 @@ data class PersonalRecord(
     val workoutId: Long,
 )
 
+data class ExerciseProgressPoint(
+    val performedOn: String,
+    val volumeKg: Double,
+    val maxWeightKg: Double?,
+)
+
 data class TemplateSummary(val id: Long, val name: String, val notes: String?, val exerciseCount: Int)
 
 data class TemplateLine(
@@ -272,6 +278,16 @@ interface WorkoutDao {
         ) ORDER BY e.name""",
     )
     fun observePersonalRecords(): Flow<List<PersonalRecord>>
+
+    @Query(
+        """SELECT w.performedOn,
+        COALESCE(SUM(COALESCE(s.reps, 0) * COALESCE(s.weightKg, 0)), 0.0) AS volumeKg,
+        MAX(s.weightKg) AS maxWeightKg
+        FROM workout_sets s INNER JOIN workouts w ON w.id = s.workoutId
+        WHERE s.exerciseId = :exerciseId
+        GROUP BY s.workoutId ORDER BY w.performedOn, w.id""",
+    )
+    fun observeExerciseProgress(exerciseId: Long): Flow<List<ExerciseProgressPoint>>
 
     @Insert suspend fun insertWorkout(value: WorkoutEntity): Long
     @Insert suspend fun insertSet(value: WorkoutSetEntity): Long

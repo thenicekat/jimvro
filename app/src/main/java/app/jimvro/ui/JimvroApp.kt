@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +49,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
@@ -93,6 +95,7 @@ import app.jimvro.data.ExerciseEntity
 import app.jimvro.data.FoodEntryEntity
 import app.jimvro.data.MeasurementEntity
 import app.jimvro.data.WorkoutEntity
+import app.jimvro.data.WorkoutSummary
 import app.jimvro.data.WorkoutSetEntity
 import app.jimvro.domain.Macros
 import app.jimvro.domain.scaleMacros
@@ -128,7 +131,7 @@ fun JimvroApp(viewModel: AppViewModel, themeMode: ThemeMode, onThemeModeChange: 
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route ?: Destination.Today.route
     val current = Destination.entries.firstOrNull { it.route == currentRoute }
-        ?: if (currentRoute.startsWith("workout/") || currentRoute == "templates" || currentRoute == "records") Destination.Workouts else Destination.Today
+        ?: if (currentRoute.startsWith("workout/") || currentRoute.startsWith("exercise/") || currentRoute == "templates" || currentRoute == "records") Destination.Workouts else Destination.Today
     val navigateRoot: (String) -> Unit = { route ->
         navController.navigate(route) {
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -207,7 +210,19 @@ fun JimvroApp(viewModel: AppViewModel, themeMode: ThemeMode, onThemeModeChange: 
             composable("templates") {
                 TemplatesScreen(viewModel, onBack = { navController.popBackStack() }) { id -> navController.navigate("workout/$id") }
             }
-            composable("records") { RecordsScreen(viewModel, onBack = { navController.popBackStack() }) }
+            composable("records") {
+                RecordsScreen(viewModel, onBack = { navController.popBackStack() }) { id -> navController.navigate("exercise/$id") }
+            }
+            composable(
+                route = "exercise/{id}",
+                arguments = listOf(navArgument("id") { type = NavType.LongType }),
+            ) { entry ->
+                ExerciseProgressScreen(
+                    viewModel = viewModel,
+                    exerciseId = entry.arguments?.getLong("id") ?: return@composable,
+                    onBack = { navController.popBackStack() },
+                )
+            }
             composable(
                 route = "workout/{id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType }),
@@ -297,6 +312,7 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
     val todayWorkouts = workouts.filter { it.performedOn == date }
     val setCount = todayWorkouts.sumOf { it.setCount }
     val volume = todayWorkouts.sumOf { it.volumeKg }
+    val weeklyVolume = remember(workouts) { weeklyVolumePoints(workouts) }
     val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
     val greeting = when { hour < 12 -> "Good morning."; hour < 18 -> "Good afternoon."; else -> "Good evening." }
     val dashedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.65f)
@@ -354,21 +370,23 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
         item {
             JournalCard {
                 Text("Weekly volume", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("No tonnage logged yet", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Box(
-                    Modifier.fillMaxWidth().height(112.dp).drawBehind {
-                        drawRoundRect(
-                            color = dashedBorderColor,
-                            style = Stroke(
-                                width = 1.5.dp.toPx(),
-                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(7f, 7f)),
-                            ),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(14.dp.toPx()),
-                        )
-                    },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("Log sets with reps and weight to see your weekly trend", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (weeklyVolume.any { it.value > 0 }) {
+                    Text("${weeklyVolume.last().value.pretty()} kg this week", fontSize = 13.sp)
+                    VolumeBarChart(weeklyVolume, Modifier.padding(top = 6.dp))
+                } else {
+                    Text("No tonnage logged yet", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Box(
+                        Modifier.fillMaxWidth().height(112.dp).drawBehind {
+                            drawRoundRect(
+                                color = dashedBorderColor,
+                                style = Stroke(width = 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(7f, 7f))),
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(14.dp.toPx()),
+                            )
+                        },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("Log sets with reps and weight to see your weekly trend", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }
@@ -423,6 +441,27 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
             viewModel.addMeasurement(it)
             showMeasurement = false
         }
+    }
+}
+
+private fun weeklyVolumePoints(workouts: List<WorkoutSummary>): List<ChartPoint> {
+    val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+    val labeler = SimpleDateFormat("d MMM", Locale.US)
+    val current = java.util.Calendar.getInstance().apply {
+        firstDayOfWeek = java.util.Calendar.MONDAY
+        set(java.util.Calendar.DAY_OF_WEEK, java.util.Calendar.MONDAY)
+        set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+        add(java.util.Calendar.WEEK_OF_YEAR, -5)
+    }
+    return (0 until 6).map { offset ->
+        val start = current.clone() as java.util.Calendar
+        start.add(java.util.Calendar.WEEK_OF_YEAR, offset)
+        val end = start.clone() as java.util.Calendar
+        end.add(java.util.Calendar.DAY_OF_YEAR, 7)
+        ChartPoint(
+            label = labeler.format(start.time),
+            value = workouts.filter { workout -> parser.parse(workout.performedOn)?.let { !it.before(start.time) && it.before(end.time) } == true }.sumOf { it.volumeKg },
+        )
     }
 }
 
@@ -502,6 +541,7 @@ private fun WorkoutsScreen(
 private fun BodyScreen(viewModel: AppViewModel) {
     val measurements by viewModel.measurements.collectAsStateWithLifecycle()
     var showAdd by remember { mutableStateOf(false) }
+    var selectedTrend by remember { mutableStateOf("Weight") }
     Page(
         "Measurements",
         "Body",
@@ -512,6 +552,26 @@ private fun BodyScreen(viewModel: AppViewModel) {
             EmptyState("No measurements yet", "Add a weigh-in to start your trend.")
         } else {
             val latest = measurements.first()
+            val trendPoints = remember(measurements, selectedTrend) { bodyTrendPoints(measurements, selectedTrend) }
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                listOf("Weight", "Body fat", "Waist", "Arms", "Thighs").forEach { metric ->
+                    FilterChip(selected = selectedTrend == metric, onClick = { selectedTrend = metric }, label = { Text(metric) })
+                }
+            }
+            if (trendPoints.size >= 2) {
+                Column(
+                    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp)).padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text("$selectedTrend trend", fontSize = 13.sp)
+                    LineTrendChart(trendPoints)
+                    val delta = trendPoints.last().value - trendPoints.first().value
+                    Text("${if (delta > 0) "+" else ""}${delta.pretty()} across ${trendPoints.size} readings", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             Column(
                 Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp)).padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -583,6 +643,19 @@ private fun BodyScreen(viewModel: AppViewModel) {
     }
 }
 
+private fun bodyTrendPoints(measurements: List<MeasurementEntity>, metric: String): List<ChartPoint> =
+    measurements.asReversed().mapNotNull { measurement ->
+        val value = when (metric) {
+            "Weight" -> measurement.weightKg
+            "Body fat" -> measurement.bodyFatPct
+            "Waist" -> measurement.waistCm
+            "Arms" -> listOfNotNull(measurement.leftArmCm, measurement.rightArmCm).takeIf { it.isNotEmpty() }?.average()
+            "Thighs" -> listOfNotNull(measurement.leftThighCm, measurement.rightThighCm).takeIf { it.isNotEmpty() }?.average()
+            else -> null
+        }
+        value?.let { ChartPoint(measurement.measuredOn.takeLast(5), it) }
+    }
+
 @Composable
 private fun BodyStat(value: String, unit: String, label: String, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -607,6 +680,11 @@ private fun MeasurementPair(label: String, left: Double?, right: Double?) {
 @Composable
 private fun FoodScreen(viewModel: AppViewModel) {
     val foods by viewModel.foodEntries.collectAsStateWithLifecycle()
+    val nutritionDays = remember(foods) {
+        foods.groupBy { it.consumedOn }.toSortedMap().entries.toList().takeLast(7).map { (date, entries) ->
+            date to (entries.sumOf { it.calories ?: 0.0 } to entries.sumOf { it.proteinG ?: 0.0 })
+        }
+    }
     var showAdd by remember { mutableStateOf(false) }
     var scannedProduct by remember { mutableStateOf<BarcodeProductEntity?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -626,6 +704,15 @@ private fun FoodScreen(viewModel: AppViewModel) {
         "Scan a barcode, or log it by hand.",
         action = { HeaderAddButton("Add") { showAdd = true } },
     ) {
+            if (nutritionDays.size >= 2) {
+                JournalCard {
+                    Text("7-day nutrition", fontSize = 14.sp)
+                    Text("Calories", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LineTrendChart(nutritionDays.map { ChartPoint(it.first.takeLast(5), it.second.first) })
+                    Text("Protein", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LineTrendChart(nutritionDays.map { ChartPoint(it.first.takeLast(5), it.second.second) }, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             Button(
                 onClick = {
                     scanner.startScan()
