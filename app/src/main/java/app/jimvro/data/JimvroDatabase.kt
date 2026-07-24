@@ -390,6 +390,7 @@ interface TemplateDao {
     @Query("UPDATE template_exercises SET targetSets = :sets, repLow = :low, repHigh = :high WHERE id = :id")
     suspend fun updateLine(id: Long, sets: Int, low: Int?, high: Int?)
     @Query("SELECT * FROM workout_templates WHERE id = :id") suspend fun template(id: Long): WorkoutTemplateEntity?
+    @Query("SELECT * FROM workout_templates WHERE name = :name COLLATE NOCASE LIMIT 1") suspend fun templateByName(name: String): WorkoutTemplateEntity?
     @Query("SELECT * FROM template_exercises WHERE templateId = :id ORDER BY position, id") suspend fun lines(id: Long): List<TemplateExerciseEntity>
 
 }

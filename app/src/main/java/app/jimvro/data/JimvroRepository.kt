@@ -75,6 +75,55 @@ class JimvroRepository(private val database: JimvroDatabase) {
 
     suspend fun removeBundledExercises() = database.exerciseDao().removeBundledCatalog()
 
+    suspend fun seedStockTemplates() {
+        data class Stock(val name: String, val day: String, val lines: List<Triple<String, Int, IntRange>>)
+        val stocks = listOf(
+            Stock("Upper A", "Monday · Strength", listOf(
+                Triple("Bench Press (Smith/Barbell)", 5, 3..8), Triple("Iso-Lateral Row", 3, 6..8),
+                Triple("Overhead Press", 3, 8..10), Triple("Lat Pulldown / Pull-ups", 3, 8..10),
+                Triple("Preacher Curl", 3, 8..10), Triple("Rope Pushdown", 3, 10..12),
+            )),
+            Stock("Lower A", "Tuesday · Strength", listOf(
+                Triple("Hack Squat / Squat Machine", 4, 8..10), Triple("Romanian Deadlift", 3, 8..8),
+                Triple("Leg Press", 3, 8..10), Triple("Seated Leg Curl", 3, 10..12),
+                Triple("Seated Calf Raise", 3, 12..15), Triple("Hanging Leg Raise", 3, 12..15),
+            )),
+            Stock("Upper B", "Thursday · Hypertrophy", listOf(
+                Triple("Incline Smith Press", 3, 8..10), Triple("Seated Cable Row (V-Grip)", 3, 10..12),
+                Triple("Lat Pulldown", 3, 10..12), Triple("Chest Fly (Machine/Cable)", 3, 12..15),
+                Triple("Machine/Cable Lateral Raise", 3, 12..15), Triple("Reverse Pec Deck / Rear Delt Fly", 3, 15..20),
+                Triple("Cross-Body Hammer Curl", 3, 10..12), Triple("Overhead Rope Triceps Extension", 3, 10..12),
+            )),
+            Stock("Lower B", "Friday · Hypertrophy", listOf(
+                Triple("Front Squat", 3, 8..10), Triple("Bulgarian Split Squat / Walking Lunges", 3, 10..10),
+                Triple("Leg Curl", 3, 12..15), Triple("Leg Extension", 3, 12..15),
+                Triple("Seated Calf Raise", 3, 15..20), Triple("Hanging Leg Raise / Cable Crunch", 3, 12..15),
+            )),
+            Stock("Upper C", "Saturday · Aesthetics", listOf(
+                Triple("Incline Dumbbell Press", 3, 8..10), Triple("Pull-ups / Lat Pulldown", 3, 8..10),
+                Triple("Straight-Arm Pulldown", 3, 12..15), Triple("Cable/Machine Lateral Raise", 4, 15..20),
+                Triple("Reverse Pec Deck", 3, 15..20), Triple("Preacher Curl", 3, 10..12),
+                Triple("Hammer Curl", 3, 10..12), Triple("Rope Pushdown", 3, 12..15),
+            )),
+        )
+        stocks.forEachIndexed { index, stock ->
+            if (database.templateDao().templateByName(stock.name) != null) return@forEachIndexed
+            val templateId = database.templateDao().insertTemplate(
+                WorkoutTemplateEntity(
+                    name = stock.name,
+                    notes = "${stock.day} · Run 8–12 weeks · Keep 1–2 RIR; add weight after reaching top reps.",
+                    position = -100 + index,
+                ),
+            )
+            stock.lines.forEachIndexed { position, (name, sets, reps) ->
+                val exercise = findOrCreateExercise(name)
+                database.templateDao().insertLine(
+                    TemplateExerciseEntity(templateId = templateId, exerciseId = exercise.id, position = position, targetSets = sets, repLow = reps.first, repHigh = reps.last),
+                )
+            }
+        }
+    }
+
     suspend fun backupDatabase(output: OutputStream) = withContext(Dispatchers.IO) {
         database.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").close()
         File(requireNotNull(database.openHelper.writableDatabase.path)).inputStream().use { it.copyTo(output) }

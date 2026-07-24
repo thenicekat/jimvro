@@ -118,6 +118,7 @@ private fun TemplateCard(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
                 Text(template.name, fontSize = 17.sp)
+                template.notes?.let { Text(it, fontSize = 11.sp, color = Clay) }
                 Text("${lines.size} exercises", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = { confirmTemplateDelete = true }, modifier = Modifier.size(40.dp)) {
