@@ -38,6 +38,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowOutward
+import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Restaurant
@@ -46,6 +47,7 @@ import androidx.compose.material.icons.outlined.FitnessCenter
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Scale
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -92,6 +94,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -101,6 +105,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import app.jimvro.AppViewModel
+import app.jimvro.HealthConnectSync
 import app.jimvro.data.BarcodeProductEntity
 import app.jimvro.data.ExerciseEntity
 import app.jimvro.data.FoodEntryEntity
@@ -154,7 +159,7 @@ fun JimvroApp(
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route ?: Destination.Today.route
-    val isWorkoutSession = currentRoute.startsWith("workout/")
+    val isStandaloneScreen = currentRoute.startsWith("workout/") || currentRoute == "settings"
     val current = Destination.entries.firstOrNull { it.route == currentRoute }
         ?: if (currentRoute.startsWith("workout/") || currentRoute.startsWith("exercise/") || currentRoute == "templates" || currentRoute == "records") Destination.Workouts else Destination.Today
     val navigateRoot: (String) -> Unit = { route ->
@@ -164,10 +169,43 @@ fun JimvroApp(
             restoreState = true
         }
     }
-    var menuOpen by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
+    var healthMessage by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val runHealthSync = {
+        scope.launch {
+            healthMessage = runCatching {
+                val count = HealthConnectSync.sync(
+                    context,
+                    viewModel.workouts.value,
+                    viewModel.measurements.value,
+                    viewModel.foodEntries.value,
+                )
+                if (count == 0) "Nothing ready to sync yet." else "$count records synced to Health Connect."
+            }.getOrElse { error -> "Health Connect sync failed: ${error.message ?: "Unknown error"}" }
+        }
+    }
+    val healthPermissionLauncher = rememberLauncherForActivityResult(
+        PermissionController.createRequestPermissionResultContract(),
+    ) { granted ->
+        if (granted.containsAll(HealthConnectSync.permissions)) runHealthSync()
+        else healthMessage = "Health Connect permission was not granted."
+    }
+    val requestHealthSync: () -> Unit = {
+        when (HealthConnectSync.availability(context)) {
+            HealthConnectClient.SDK_AVAILABLE -> scope.launch {
+                val granted = HealthConnectClient.getOrCreate(context)
+                    .permissionController.getGrantedPermissions()
+                if (granted.containsAll(HealthConnectSync.permissions)) runHealthSync()
+                else healthPermissionLauncher.launch(HealthConnectSync.permissions)
+            }
+            HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED ->
+                healthMessage = "Install or update Health Connect, then try again."
+            else -> healthMessage = "Health Connect is unavailable on this device."
+        }
+        Unit
+    }
     val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         uri?.let { scope.launch { context.contentResolver.openOutputStream(it)?.use { output -> viewModel.backupDatabase(output) } } }
     }
@@ -201,7 +239,7 @@ fun JimvroApp(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            if (!isWorkoutSession) {
+            if (!isStandaloneScreen) {
             TopAppBar(
                 title = { Text(current.label, fontSize = 16.sp) },
                 actions = {
@@ -213,28 +251,9 @@ fun JimvroApp(
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.55f)),
                             elevation = CardDefaults.cardElevation(0.dp),
                         ) {
-                            IconButton(onClick = { menuOpen = true }, modifier = Modifier.fillMaxSize()) {
-                                Icon(Icons.Outlined.MoreHoriz, "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            IconButton(onClick = { navController.navigate("settings") }, modifier = Modifier.fillMaxSize()) {
+                                Icon(Icons.Outlined.Settings, "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                        }
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            Text("Appearance", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            ThemeMode.entries.forEach { mode ->
-                                DropdownMenuItem(
-                                    text = { Text(mode.name.lowercase().replaceFirstChar(Char::uppercase)) },
-                                    onClick = { onThemeModeChange(mode); menuOpen = false },
-                                    trailingIcon = { if (themeMode == mode) Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = Clay) },
-                                )
-                            }
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text("Goals & units") },
-                                onClick = { menuOpen = false; settingsOpen = true },
-                            )
-                            DropdownMenuItem(text = { Text("Export CSV") }, onClick = { menuOpen = false; csvLauncher.launch("jimvro-export.csv") })
-                            DropdownMenuItem(text = { Text("Export JSON") }, onClick = { menuOpen = false; jsonLauncher.launch("jimvro-export.json") })
-                            DropdownMenuItem(text = { Text("Backup database") }, onClick = { menuOpen = false; backupLauncher.launch("jimvro-backup.db") })
-                            DropdownMenuItem(text = { Text("Restore database") }, onClick = { menuOpen = false; restoreLauncher.launch(arrayOf("application/octet-stream", "application/x-sqlite3", "*/*")) })
                         }
                     }
                 },
@@ -243,7 +262,7 @@ fun JimvroApp(
             }
         },
         bottomBar = {
-            if (!isWorkoutSession) {
+            if (!isStandaloneScreen) {
             NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
                 Destination.entries.forEach { destination ->
                     NavigationBarItem(
@@ -287,6 +306,19 @@ fun JimvroApp(
             composable("records") {
                 RecordsScreen(viewModel, onBack = { navController.popBackStack() }) { id -> navController.navigate("exercise/$id") }
             }
+            composable("settings") {
+                SettingsScreen(
+                    themeMode = themeMode,
+                    onThemeModeChange = onThemeModeChange,
+                    onBack = { navController.popBackStack() },
+                    onGoals = { settingsOpen = true },
+                    onHealthSync = requestHealthSync,
+                    onExportCsv = { csvLauncher.launch("jimvro-export.csv") },
+                    onExportJson = { jsonLauncher.launch("jimvro-export.json") },
+                    onBackup = { backupLauncher.launch("jimvro-backup.db") },
+                    onRestore = { restoreLauncher.launch(arrayOf("application/octet-stream", "application/x-sqlite3", "*/*")) },
+                )
+            }
             composable(
                 route = "exercise/{id}",
                 arguments = listOf(navArgument("id") { type = NavType.LongType }),
@@ -315,6 +347,14 @@ fun JimvroApp(
     if (settingsOpen) SettingsSheet(settings, { settingsOpen = false }) {
         onSettingsChange(it)
         settingsOpen = false
+    }
+    healthMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { healthMessage = null },
+            title = { Text("Health Connect") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { healthMessage = null }) { Text("Done") } },
+        )
     }
 }
 
@@ -997,6 +1037,92 @@ internal fun FormSheet(
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().height(40.dp)) { Text("Cancel") }
         }
     }
+}
+
+@Composable
+private fun SettingsScreen(
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit,
+    onBack: () -> Unit,
+    onGoals: () -> Unit,
+    onHealthSync: () -> Unit,
+    onExportCsv: () -> Unit,
+    onExportJson: () -> Unit,
+    onBackup: () -> Unit,
+    onRestore: () -> Unit,
+) {
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
+    ) {
+        item {
+            TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 0.dp)) {
+                Icon(Icons.Outlined.ArrowBack, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(5.dp))
+                Text("Back")
+            }
+            Spacer(Modifier.height(18.dp))
+            Text("PREFERENCES", fontSize = 10.sp, letterSpacing = 1.5.sp, color = Clay)
+            Text("Settings", style = MaterialTheme.typography.headlineLarge)
+        }
+        item {
+            SettingsSection("APPEARANCE") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThemeMode.entries.forEach { mode ->
+                        Button(
+                            onClick = { onThemeModeChange(mode) },
+                            modifier = Modifier.weight(1f).height(42.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (themeMode == mode) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.surface,
+                                contentColor = if (themeMode == mode) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface,
+                            ),
+                            contentPadding = PaddingValues(horizontal = 4.dp),
+                        ) { Text(mode.name.lowercase().replaceFirstChar(Char::uppercase), fontSize = 12.sp) }
+                    }
+                }
+                SettingsActionRow("Goals & units", "Weight, measurements, nutrition, and rest timer", onGoals)
+            }
+        }
+        item {
+            SettingsSection("HEALTH") {
+                SettingsActionRow("Sync Health Connect", "Export finished workouts, weight, body fat, and nutrition", onHealthSync)
+            }
+        }
+        item {
+            SettingsSection("YOUR DATA") {
+                SettingsActionRow("Export CSV", "Readable spreadsheet export", onExportCsv)
+                SettingsActionRow("Export JSON", "Portable structured export", onExportJson)
+                SettingsActionRow("Backup database", "Complete local backup", onBackup)
+                SettingsActionRow("Restore database", "Replace local data from backup", onRestore)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsSection(label: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(6.dp))
+        content()
+    }
+}
+
+@Composable
+private fun SettingsActionRow(title: String, subtitle: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, fontSize = 16.sp)
+            Text(subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(Icons.Outlined.ArrowOutward, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
 }
 
 @Composable
