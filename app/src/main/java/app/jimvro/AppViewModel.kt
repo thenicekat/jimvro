@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import app.jimvro.data.FoodEntryEntity
+import app.jimvro.data.SavedFoodEntity
 import app.jimvro.data.JimvroRepository
 import app.jimvro.data.MeasurementEntity
 import app.jimvro.data.WorkoutEntity
@@ -66,8 +67,9 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     fun updateTemplateLine(id: Long, sets: Int, low: Int?, high: Int?) = viewModelScope.launch { repository.updateTemplateLine(id, sets, low, high) }
     fun reorderTemplateLines(lines: List<TemplateLine>) = viewModelScope.launch { repository.reorderTemplateLines(lines) }
     suspend fun startFromTemplate(templateId: Long, date: String): Long = repository.startFromTemplate(templateId, date)
-    fun addFood(value: FoodEntryEntity) = viewModelScope.launch { repository.addFood(value) }
+    fun addFood(value: FoodEntryEntity, saveForReuse: Boolean = false) = viewModelScope.launch { repository.addFood(value, saveForReuse) }
     fun deleteFood(value: FoodEntryEntity) = viewModelScope.launch { repository.deleteFood(value) }
+    fun deleteSavedFood(value: SavedFoodEntity) = viewModelScope.launch { repository.deleteSavedFood(value) }
     suspend fun lookupBarcode(code: String) = repository.lookupBarcode(code)
     suspend fun backupDatabase(output: OutputStream) = repository.backupDatabase(output)
     suspend fun restoreDatabase(input: InputStream) = repository.restoreDatabase(input)

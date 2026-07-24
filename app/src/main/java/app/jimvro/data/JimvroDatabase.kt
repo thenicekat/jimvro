@@ -459,6 +459,7 @@ interface FoodDao {
     fun observeSaved(): Flow<List<SavedFoodEntity>>
 
     @Insert suspend fun save(value: SavedFoodEntity): Long
+    @Query("DELETE FROM saved_foods WHERE name = :name") suspend fun deleteSaved(name: String)
 
     @Query("SELECT * FROM barcode_products WHERE barcode = :barcode")
     suspend fun getBarcodeProduct(barcode: String): BarcodeProductEntity?
