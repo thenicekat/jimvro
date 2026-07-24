@@ -49,6 +49,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
@@ -492,27 +493,78 @@ private fun BodyScreen(viewModel: AppViewModel) {
         "Weight, body fat, and tape measurements over time.",
         action = { HeaderAddButton("Add") { showAdd = true } },
     ) {
-            if (measurements.isEmpty()) EmptyState("No measurements yet", "Add a weigh-in to start your trend.")
-            measurements.forEach { measurement ->
-                JournalCard {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(measurement.weightKg?.let { "${it.pretty()} kg" } ?: "Body measurement", fontSize = 22.sp)
-                            Text(measurement.measuredOn, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        IconButton(onClick = { viewModel.deleteMeasurement(measurement) }) {
-                            Icon(Icons.Outlined.Delete, "Delete measurement")
-                        }
+        if (measurements.isEmpty()) {
+            EmptyState("No measurements yet", "Add a weigh-in to start your trend.")
+        } else {
+            val latest = measurements.first()
+            Column(
+                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp)).padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("LATEST", fontSize = 10.sp, letterSpacing = 1.4.sp, color = Clay)
+                        Text(latest.measuredOn, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    measurement.bodyFatPct?.let { Text("Body fat  ${it.pretty()}%", fontSize = 13.sp) }
-                    measurement.waistCm?.let { Text("Waist  ${it.pretty()} cm", fontSize = 13.sp) }
-                    measurement.notes?.takeIf(String::isNotBlank)?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    IconButton(onClick = { viewModel.deleteMeasurement(latest) }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Outlined.Delete, "Delete latest measurement", Modifier.size(17.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    BodyStat(latest.weightKg?.pretty() ?: "—", "kg", "Weight", Modifier.weight(1f))
+                    BodyStat(latest.bodyFatPct?.pretty() ?: "—", "%", "Body fat", Modifier.weight(1f))
+                    BodyStat(latest.waistCm?.pretty() ?: "—", "cm", "Waist", Modifier.weight(1f))
+                }
+                latest.notes?.takeIf(String::isNotBlank)?.let {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                    Text(it, fontSize = 13.sp, lineHeight = 19.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+
+            if (measurements.size > 1) {
+                Text("HISTORY", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column {
+                    measurements.drop(1).forEachIndexed { index, measurement ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 13.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(measurement.measuredOn, fontSize = 13.sp)
+                                Text(
+                                    listOfNotNull(
+                                        measurement.bodyFatPct?.let { "${it.pretty()}% fat" },
+                                        measurement.waistCm?.let { "${it.pretty()} cm waist" },
+                                    ).joinToString("  ·  ").ifBlank { "General measurement" },
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Text(measurement.weightKg?.let { "${it.pretty()} kg" } ?: "—", fontSize = 16.sp)
+                            IconButton(onClick = { viewModel.deleteMeasurement(measurement) }, modifier = Modifier.size(38.dp)) {
+                                Icon(Icons.Outlined.Delete, "Delete measurement", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        if (index < measurements.size - 2) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                    }
+                }
+            }
+        }
     }
     if (showAdd) MeasurementDialog(onDismiss = { showAdd = false }) {
         viewModel.addMeasurement(it)
         showAdd = false
+    }
+}
+
+@Composable
+private fun BodyStat(value: String, unit: String, label: String, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(value, fontSize = 27.sp, fontWeight = FontWeight.Light)
+            if (value != "—") Text(unit, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
+        }
+        Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
