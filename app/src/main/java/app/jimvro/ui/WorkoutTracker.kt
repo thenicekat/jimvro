@@ -113,13 +113,14 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
 
     val totalVolume = sets.sumOf { (it.reps ?: 0) * (it.weightKg ?: 0.0) }
     val completed = sets.count { it.reps != null || it.weightKg != null }
+    val finished = workout?.finishedAt != null
     val elapsedSeconds = workout?.let { ((it.finishedAt ?: now) - it.createdAt).coerceAtLeast(0) / 1_000 } ?: 0
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 84.dp),
+            contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = if (finished) 20.dp else 84.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
         item {
@@ -144,7 +145,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
             }
         }
 
-        if (restRemaining > 0) item {
+        if (!finished && restRemaining > 0) item {
             Row(
                 Modifier.fillMaxWidth().background(ClayMuted.copy(alpha = 0.4f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -186,6 +187,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                         set = set,
                         settings = settings,
                         showLabels = rowIndex == 0,
+                        readOnly = finished,
                         onUpdate = { reps, weight -> viewModel.updateSet(set.id, reps, weight, set.rpe) },
                         onSetType = { viewModel.updateSetType(set.id, it) },
                         onComplete = {
@@ -197,7 +199,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                     )
                 }
             }
-            item {
+            if (!finished) item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(
                         onClick = { viewModel.appendSet(workoutId, current.first().exerciseId) },
@@ -232,7 +234,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                     }
                 }
             }
-            item {
+            if (!finished) item {
                 if (index < groups.lastIndex) {
                     TextButton(
                         onClick = {
@@ -253,7 +255,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
             }
         }
         }
-        Row(
+        if (!finished) Row(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
@@ -265,15 +267,15 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
             Text("$completed/${sets.size} sets", Modifier.weight(1f), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Button(
                 onClick = { viewModel.finishWorkout(workoutId); showSummary = true },
-                enabled = sets.isNotEmpty() && workout?.finishedAt == null,
+                enabled = sets.isNotEmpty(),
                 modifier = Modifier.height(48.dp),
                 shape = RoundedCornerShape(8.dp),
                 contentPadding = PaddingValues(horizontal = 24.dp),
-            ) { Text(if (workout?.finishedAt == null) "Finish workout" else "Finished") }
+            ) { Text("Finish workout") }
         }
     }
 
-    if (showAddExercise) {
+    if (!finished && showAddExercise) {
         AddExerciseSheet(
             exercises = exercises,
             onToggleFavorite = viewModel::toggleFavorite,
@@ -386,6 +388,7 @@ private fun TrackerSetRow(
     set: WorkoutSetDetail,
     settings: AppSettings,
     showLabels: Boolean,
+    readOnly: Boolean,
     onUpdate: (Int?, Double?) -> Unit,
     onSetType: (String) -> Unit,
     onComplete: () -> Unit,
@@ -393,11 +396,9 @@ private fun TrackerSetRow(
 ) {
     var reps by remember(set.id, set.reps) { mutableStateOf(set.reps?.toString().orEmpty()) }
     var weight by remember(set.id, set.weightKg, settings.weightUnit) { mutableStateOf(set.weightKg?.displayWeight(settings)?.prettyTracker().orEmpty()) }
-    val done = reps.isNotBlank() || weight.isNotBlank()
     Column(
         Modifier
             .fillMaxWidth()
-            .background(if (done) ClayMuted.copy(alpha = 0.14f) else MaterialTheme.colorScheme.background)
             .padding(vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
@@ -405,26 +406,33 @@ private fun TrackerSetRow(
                 Spacer(Modifier.width(88.dp))
                 Text("Reps", Modifier.weight(1f), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("${settings.weightUnit}", Modifier.weight(1f), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.width(32.dp))
+                if (!readOnly) Spacer(Modifier.width(32.dp))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(set.setNumber.toString().padStart(2, '0'), Modifier.width(24.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                TextButton(
-                    onClick = {
-                        val types = listOf("working", "warmup", "drop")
-                        onSetType(types[(types.indexOf(set.setType) + 1).mod(types.size)])
-                    },
-                    modifier = Modifier.width(56.dp), contentPadding = PaddingValues(horizontal = 0.dp),
-                ) { Text(when (set.setType) { "warmup" -> "Warm"; "drop" -> "Drop"; else -> "Work" }, fontSize = 10.sp, color = Clay) }
-                TrackerNumberField(reps, "Reps", Modifier.weight(1f), onComplete) { value ->
-                    reps = value
-                    onUpdate(value.toIntOrNull(), weight.toDoubleOrNull()?.storageWeight(settings))
+                val typeLabel = when (set.setType) { "warmup" -> "Warm"; "drop" -> "Drop"; else -> "Work" }
+                if (readOnly) {
+                    Text(typeLabel, Modifier.width(56.dp), fontSize = 10.sp, color = Clay)
+                    Text(reps.ifBlank { "—" }, Modifier.weight(1f).padding(vertical = 12.dp), fontSize = 16.sp)
+                    Text(weight.ifBlank { "—" }, Modifier.weight(1f).padding(vertical = 12.dp), fontSize = 16.sp)
+                } else {
+                    TextButton(
+                        onClick = {
+                            val types = listOf("working", "warmup", "drop")
+                            onSetType(types[(types.indexOf(set.setType) + 1).mod(types.size)])
+                        },
+                        modifier = Modifier.width(56.dp), contentPadding = PaddingValues(horizontal = 0.dp),
+                    ) { Text(typeLabel, fontSize = 10.sp, color = Clay) }
+                    TrackerNumberField(reps, "Reps", Modifier.weight(1f), onComplete) { value ->
+                        reps = value
+                        onUpdate(value.toIntOrNull(), weight.toDoubleOrNull()?.storageWeight(settings))
+                    }
+                    TrackerNumberField(weight, "Weight", Modifier.weight(1f), onComplete) { value ->
+                        weight = value
+                        onUpdate(reps.toIntOrNull(), value.toDoubleOrNull()?.storageWeight(settings))
+                    }
+                    IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) { Icon(Icons.Outlined.Delete, "Delete set", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
-                TrackerNumberField(weight, "Weight", Modifier.weight(1f), onComplete) { value ->
-                    weight = value
-                    onUpdate(reps.toIntOrNull(), value.toDoubleOrNull()?.storageWeight(settings))
-                }
-                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) { Icon(Icons.Outlined.Delete, "Delete set", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
     }

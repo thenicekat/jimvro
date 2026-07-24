@@ -243,18 +243,11 @@ fun JimvroApp(
             TopAppBar(
                 title = { Text(current.label, fontSize = 16.sp) },
                 actions = {
-                    Box(Modifier.padding(end = 12.dp)) {
-                        Card(
-                            modifier = Modifier.size(44.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.55f)),
-                            elevation = CardDefaults.cardElevation(0.dp),
-                        ) {
-                            IconButton(onClick = { navController.navigate("settings") }, modifier = Modifier.fillMaxSize()) {
-                                Icon(Icons.Outlined.Settings, "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
+                    IconButton(
+                        onClick = { navController.navigate("settings") },
+                        modifier = Modifier.padding(end = 12.dp).size(44.dp),
+                    ) {
+                        Icon(Icons.Outlined.Settings, "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
