@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowOutward
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material.icons.outlined.Delete
@@ -97,6 +98,7 @@ import app.jimvro.domain.Macros
 import app.jimvro.domain.scaleMacros
 import app.jimvro.ui.theme.Clay
 import app.jimvro.ui.theme.ClayMuted
+import app.jimvro.ui.theme.ThemeMode
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
@@ -121,7 +123,7 @@ private fun Configuration.primaryLocale(): Locale =
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun JimvroApp(viewModel: AppViewModel) {
+fun JimvroApp(viewModel: AppViewModel, themeMode: ThemeMode, onThemeModeChange: (ThemeMode) -> Unit) {
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route ?: Destination.Today.route
@@ -134,6 +136,7 @@ fun JimvroApp(viewModel: AppViewModel) {
             restoreState = true
         }
     }
+    var menuOpen by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -141,15 +144,27 @@ fun JimvroApp(viewModel: AppViewModel) {
             TopAppBar(
                 title = { Text(current.label, fontSize = 16.sp) },
                 actions = {
-                    Card(
-                        modifier = Modifier.padding(end = 12.dp).size(48.dp),
-                        shape = CircleShape,
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.55f)),
-                        elevation = CardDefaults.cardElevation(2.dp),
-                    ) {
-                        IconButton(onClick = {}, modifier = Modifier.fillMaxSize()) {
-                            Icon(Icons.Outlined.MoreHoriz, "More", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Box(Modifier.padding(end = 12.dp)) {
+                        Card(
+                            modifier = Modifier.size(44.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.55f)),
+                            elevation = CardDefaults.cardElevation(0.dp),
+                        ) {
+                            IconButton(onClick = { menuOpen = true }, modifier = Modifier.fillMaxSize()) {
+                                Icon(Icons.Outlined.MoreHoriz, "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            Text("Appearance", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            ThemeMode.entries.forEach { mode ->
+                                DropdownMenuItem(
+                                    text = { Text(mode.name.lowercase().replaceFirstChar(Char::uppercase)) },
+                                    onClick = { onThemeModeChange(mode); menuOpen = false },
+                                    trailingIcon = { if (themeMode == mode) Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = Clay) },
+                                )
+                            }
                         }
                     }
                 },

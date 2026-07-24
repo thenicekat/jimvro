@@ -68,8 +68,15 @@ private val DarkColors = darkColorScheme(
     outline = Color(0xFF50534A),
 )
 
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
 @Composable
-fun JimvroTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+fun JimvroTheme(themeMode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> Unit) {
+    val darkTheme = when (themeMode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
     val baseTypography = androidx.compose.material3.Typography()
     MaterialTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
