@@ -192,6 +192,13 @@ data class TemplateLine(
     val repHigh: Int?,
 )
 
+data class TemplateTarget(
+    val exerciseId: Long,
+    val targetSets: Int,
+    val repLow: Int?,
+    val repHigh: Int?,
+)
+
 data class DailyNutrition(
     val calories: Double,
     val proteinG: Double,
@@ -311,6 +318,23 @@ interface TemplateDao {
 
     @Insert suspend fun insertTemplate(value: WorkoutTemplateEntity): Long
     @Insert suspend fun insertLine(value: TemplateExerciseEntity): Long
+    @Transaction
+    suspend fun createTemplate(name: String, targets: List<TemplateTarget>): Long {
+        val templateId = insertTemplate(WorkoutTemplateEntity(name = name))
+        targets.forEachIndexed { position, target ->
+            insertLine(
+                TemplateExerciseEntity(
+                    templateId = templateId,
+                    exerciseId = target.exerciseId,
+                    position = position,
+                    targetSets = target.targetSets,
+                    repLow = target.repLow,
+                    repHigh = target.repHigh,
+                ),
+            )
+        }
+        return templateId
+    }
     @Query("DELETE FROM workout_templates WHERE id = :id") suspend fun deleteTemplate(id: Long)
     @Query("DELETE FROM template_exercises WHERE id = :id") suspend fun deleteLine(id: Long)
     @Query("SELECT * FROM workout_templates WHERE id = :id") suspend fun template(id: Long): WorkoutTemplateEntity?

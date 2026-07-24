@@ -30,6 +30,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -42,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.jimvro.AppViewModel
 import app.jimvro.data.ExerciseEntity
 import app.jimvro.data.TemplateSummary
+import app.jimvro.data.TemplateTarget
 import app.jimvro.ui.theme.Clay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -53,6 +55,7 @@ fun TemplatesScreen(viewModel: AppViewModel, onBack: () -> Unit, onWorkoutStarte
     val templates by viewModel.templates.collectAsStateWithLifecycle()
     val exercises by viewModel.exercises.collectAsStateWithLifecycle()
     var createOpen by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     Page(
         "Training plans",
         "Templates",
@@ -65,10 +68,16 @@ fun TemplatesScreen(viewModel: AppViewModel, onBack: () -> Unit, onWorkoutStarte
         }
         templates.forEach { template -> TemplateCard(template, exercises, viewModel, onWorkoutStarted) }
     }
-    if (createOpen) CreateTemplateSheet(onDismiss = { createOpen = false }) {
-        viewModel.createTemplate(it)
-        createOpen = false
-    }
+    if (createOpen) CreateTemplateSheet(
+        exercises = exercises,
+        onDismiss = { createOpen = false },
+        onCreate = { name, targets ->
+            scope.launch {
+                viewModel.createTemplate(name, targets)
+                createOpen = false
+            }
+        },
+    )
 }
 
 @Composable
@@ -166,10 +175,85 @@ fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
     }
 }
 
-@Composable private fun CreateTemplateSheet(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
+@Composable private fun CreateTemplateSheet(
+    exercises: List<ExerciseEntity>,
+    onDismiss: () -> Unit,
+    onCreate: (String, List<TemplateTarget>) -> Unit,
+) {
     var name by remember { mutableStateOf("") }
-    FormSheet("New template", "Name your reusable workout.", "Create template", name.isNotBlank(), { onCreate(name.trim()) }, onDismiss) {
+    var selected by remember(exercises) { mutableStateOf(exercises.firstOrNull()) }
+    var menu by remember { mutableStateOf(false) }
+    var sets by remember { mutableStateOf(3) }
+    var repLow by remember { mutableStateOf(8) }
+    var repHigh by remember { mutableStateOf(12) }
+    val targets = remember { mutableStateListOf<TemplateTarget>() }
+
+    FormSheet(
+        "Build template",
+        "Set up the whole session now. You can edit it later.",
+        "Save template",
+        name.isNotBlank() && targets.isNotEmpty(),
+        { onCreate(name.trim(), targets.toList()) },
+        onDismiss,
+    ) {
         AppField(name, { name = it }, "Template name")
+        Text("EXERCISES", fontSize = 10.sp, letterSpacing = 1.4.sp, color = Clay)
+        targets.forEachIndexed { index, target ->
+            val exercise = exercises.firstOrNull { it.id == target.exerciseId }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("${index + 1}", Modifier.width(24.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(Modifier.weight(1f)) {
+                    Text(exercise?.name.orEmpty(), fontSize = 14.sp)
+                    Text("${target.targetSets} × ${target.repLow}–${target.repHigh}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(onClick = { targets.removeAt(index) }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Outlined.Delete, "Remove exercise", Modifier.size(16.dp))
+                }
+            }
+        }
+        androidx.compose.foundation.layout.Box {
+            Button(
+                onClick = { menu = true },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+            ) { Text(selected?.name ?: "Choose exercise", fontWeight = FontWeight.Normal) }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                exercises.filterNot { exercise -> targets.any { it.exerciseId == exercise.id } }.forEach { exercise ->
+                    DropdownMenuItem(text = { Text(exercise.name) }, onClick = { selected = exercise; menu = false })
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TargetStepper("Sets", sets, 1..8, Modifier.weight(1f)) { sets = it }
+            TargetStepper("Reps", repLow, 1..30, Modifier.weight(1f)) { repLow = it; if (repHigh < it) repHigh = it }
+            TargetStepper("to", repHigh, repLow..30, Modifier.weight(1f)) { repHigh = it }
+        }
+        TextButton(
+            onClick = {
+                selected?.let { exercise ->
+                    targets += TemplateTarget(exercise.id, sets, repLow, repHigh)
+                    selected = exercises.firstOrNull { candidate -> targets.none { it.exerciseId == candidate.id } }
+                }
+            },
+            enabled = selected != null && targets.none { it.exerciseId == selected?.id },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Outlined.Add, null, Modifier.size(17.dp)); Spacer(Modifier.width(5.dp)); Text("Add to template")
+        }
+    }
+}
+
+@Composable
+private fun TargetStepper(label: String, value: Int, range: IntRange, modifier: Modifier, onChange: (Int) -> Unit) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { onChange((value - 1).coerceAtLeast(range.first)) }, enabled = value > range.first, contentPadding = PaddingValues(0.dp)) { Text("−") }
+            Text(value.toString(), fontSize = 15.sp)
+            TextButton(onClick = { onChange((value + 1).coerceAtMost(range.last)) }, enabled = value < range.last, contentPadding = PaddingValues(0.dp)) { Text("+") }
+        }
     }
 }
 

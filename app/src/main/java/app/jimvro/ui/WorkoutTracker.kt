@@ -3,6 +3,7 @@ package app.jimvro.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +47,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,7 +80,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(22.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -106,18 +108,22 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
             }
         } else {
             item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
                     groups.forEachIndexed { dotIndex, group ->
-                        Box(
+                        Text(
+                            group.first().exerciseName,
                             Modifier
-                                .padding(horizontal = 3.dp)
-                                .width(if (dotIndex == index) 24.dp else 7.dp)
-                                .height(7.dp)
                                 .background(
-                                    if (dotIndex == index) Clay else if (group.all { it.reps != null || it.weightKg != null }) Clay.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outline,
+                                    if (dotIndex == index) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.surface,
                                     CircleShape,
                                 )
-                                .clickable { index = dotIndex },
+                                .clickable { index = dotIndex }
+                                .padding(horizontal = 13.dp, vertical = 8.dp),
+                            fontSize = 12.sp,
+                            color = if (dotIndex == index) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -153,13 +159,24 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
                 }
             }
             item {
-                TextButton(
-                    onClick = { viewModel.appendSet(workoutId, current.first().exerciseId) },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                ) {
-                    Icon(Icons.Outlined.Add, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Add set")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = { viewModel.appendSet(workoutId, current.first().exerciseId) },
+                        modifier = Modifier.weight(1f).height(44.dp),
+                    ) {
+                        Icon(Icons.Outlined.Add, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Blank set")
+                    }
+                    val last = current.last()
+                    if (last.reps != null || last.weightKg != null) {
+                        Button(
+                            onClick = { viewModel.appendSet(workoutId, last.exerciseId, last.reps, last.weightKg) },
+                            modifier = Modifier.weight(1f).height(44.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.onSurface, contentColor = MaterialTheme.colorScheme.surface),
+                        ) { Text("Repeat last", fontWeight = FontWeight.Normal) }
+                    }
                 }
             }
             item {
@@ -235,7 +252,7 @@ private fun ExerciseHeader(
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onBack, enabled = canGoBack) { Icon(Icons.Outlined.ChevronLeft, "Previous exercise") }
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("$position / $count", fontSize = 11.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("EXERCISE $position OF $count", fontSize = 10.sp, letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(name, fontFamily = Fraunces, fontSize = 25.sp, fontWeight = FontWeight.Normal)
         }
         IconButton(onClick = onForward, enabled = canGoForward) { Icon(Icons.Outlined.ChevronRight, "Next exercise") }

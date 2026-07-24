@@ -38,6 +38,8 @@ class JimvroRepository(private val database: JimvroDatabase) {
     suspend fun deleteSet(setId: Long) = database.workoutDao().deleteSet(setId)
     suspend fun createTemplate(name: String, notes: String? = null) =
         database.templateDao().insertTemplate(WorkoutTemplateEntity(name = name, notes = notes))
+    suspend fun createTemplate(name: String, targets: List<TemplateTarget>) =
+        database.templateDao().createTemplate(name, targets)
     suspend fun deleteTemplate(id: Long) = database.templateDao().deleteTemplate(id)
     suspend fun addTemplateLine(templateId: Long, exerciseId: Long, targetSets: Int, repLow: Int?, repHigh: Int?) =
         database.templateDao().insertLine(TemplateExerciseEntity(templateId = templateId, exerciseId = exerciseId, targetSets = targetSets, repLow = repLow, repHigh = repHigh))
