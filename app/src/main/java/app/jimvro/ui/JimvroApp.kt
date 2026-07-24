@@ -628,18 +628,20 @@ internal fun FormSheet(
             Modifier
                 .fillMaxWidth()
                 .heightIn(max = 680.dp)
-                .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
                 .imePadding()
                 .padding(horizontal = 20.dp, vertical = 22.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(title, fontFamily = Fraunces, fontSize = 25.sp, fontWeight = FontWeight.Normal)
                 Text(description, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            content()
-            Spacer(Modifier.height(2.dp))
+            Column(
+                Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                content = content,
+            )
             Button(
                 onClick = onPrimary,
                 enabled = primaryEnabled,
@@ -652,7 +654,7 @@ internal fun FormSheet(
                     disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
                 ),
             ) { Text(primaryLabel, fontWeight = FontWeight.Medium) }
-            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().height(40.dp)) { Text("Cancel") }
         }
     }
 }

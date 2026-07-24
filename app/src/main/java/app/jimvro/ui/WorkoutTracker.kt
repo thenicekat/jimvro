@@ -359,7 +359,7 @@ private fun AddExerciseSheet(
     onDismiss: () -> Unit,
     onAdd: (Long, Int?, Double?) -> Unit,
 ) {
-    var selected by remember(exercises) { mutableStateOf(exercises.firstOrNull()) }
+    var selected by remember { mutableStateOf<ExerciseEntity?>(null) }
     var reps by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("") }
     FormSheet(

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -24,6 +26,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,6 +39,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -180,7 +185,7 @@ fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
     onCreate: (String, List<TemplateTarget>) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
-    var selected by remember(exercises) { mutableStateOf(exercises.firstOrNull()) }
+    var selected by remember { mutableStateOf<ExerciseEntity?>(null) }
     var sets by remember { mutableStateOf(3) }
     var repLow by remember { mutableStateOf(8) }
     var repHigh by remember { mutableStateOf(12) }
@@ -223,7 +228,7 @@ fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             onClick = {
                 selected?.let { exercise ->
                     targets += TemplateTarget(exercise.id, sets, repLow, repHigh)
-                    selected = exercises.firstOrNull { candidate -> targets.none { it.exerciseId == candidate.id } }
+                    selected = null
                 }
             },
             enabled = selected != null && targets.none { it.exerciseId == selected?.id },
@@ -236,12 +241,16 @@ fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
 
 @Composable
 private fun TargetStepper(label: String, value: Int, range: IntRange, modifier: Modifier, onChange: (Int) -> Unit) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(
+        modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f), RoundedCornerShape(10.dp)).padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(label.uppercase(), fontSize = 9.sp, letterSpacing = 1.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { onChange((value - 1).coerceAtLeast(range.first)) }, enabled = value > range.first, contentPadding = PaddingValues(0.dp)) { Text("−") }
-            Text(value.toString(), fontSize = 15.sp)
-            TextButton(onClick = { onChange((value + 1).coerceAtMost(range.last)) }, enabled = value < range.last, contentPadding = PaddingValues(0.dp)) { Text("+") }
+            TextButton(onClick = { onChange((value - 1).coerceAtLeast(range.first)) }, enabled = value > range.first, modifier = Modifier.size(34.dp), contentPadding = PaddingValues(0.dp)) { Text("−") }
+            Text(value.toString(), Modifier.weight(1f), fontSize = 15.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            TextButton(onClick = { onChange((value + 1).coerceAtMost(range.last)) }, enabled = value < range.last, modifier = Modifier.size(34.dp), contentPadding = PaddingValues(0.dp)) { Text("+") }
         }
     }
 }
@@ -254,6 +263,7 @@ internal fun ExerciseSearchField(
 ) {
     var query by remember(selected?.id) { mutableStateOf(selected?.name.orEmpty()) }
     var expanded by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
     val matches = remember(query, exercises) {
         if (query.isBlank()) exercises.take(20) else exercises.filter { exercise ->
             listOf(exercise.name, exercise.muscleGroup, exercise.bodyPart, exercise.equipment, exercise.target)
@@ -261,10 +271,18 @@ internal fun ExerciseSearchField(
         }.take(30)
     }
     androidx.compose.foundation.layout.Box {
-        AppField(
+        OutlinedTextField(
             value = query,
             onValueChange = { query = it; expanded = true },
-            label = "Search exercise, muscle, or equipment",
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Search exercises") },
+            leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(19.dp)) },
+            singleLine = true,
+            shape = RoundedCornerShape(10.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Clay,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
+            ),
         )
         DropdownMenu(expanded = expanded && matches.isNotEmpty(), onDismissRequest = { expanded = false }) {
             matches.forEach { exercise ->
@@ -279,7 +297,7 @@ internal fun ExerciseSearchField(
                             )
                         }
                     },
-                    onClick = { query = exercise.name; onSelected(exercise); expanded = false },
+                    onClick = { query = exercise.name; onSelected(exercise); expanded = false; focusManager.clearFocus() },
                 )
             }
         }
@@ -291,7 +309,7 @@ internal fun ExerciseSearchField(
     onDismiss: () -> Unit,
     onAdd: (Long, Int, Int?, Int?) -> Unit,
 ) {
-    var selected by remember(exercises) { mutableStateOf(exercises.firstOrNull()) }
+    var selected by remember { mutableStateOf<ExerciseEntity?>(null) }
     var sets by remember { mutableStateOf("3") }
     var low by remember { mutableStateOf("") }
     var high by remember { mutableStateOf("") }
