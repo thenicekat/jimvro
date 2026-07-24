@@ -17,11 +17,15 @@ import app.jimvro.data.PreviousSet
 import app.jimvro.data.TemplateLine
 import app.jimvro.data.TemplateTarget
 import app.jimvro.data.ExerciseProgressPoint
+import app.jimvro.data.ProgressPhotoEntity
+import java.io.InputStream
+import java.io.OutputStream
 
 class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     val measurements = repository.measurements.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val workouts = repository.workouts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val foodEntries = repository.foodEntries.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val savedFoods = repository.savedFoods.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val exercises = repository.exercises.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val templates = repository.templates.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val personalRecords = repository.personalRecords.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -30,6 +34,8 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
 
     fun addMeasurement(value: MeasurementEntity) = viewModelScope.launch { repository.addMeasurement(value) }
     fun deleteMeasurement(value: MeasurementEntity) = viewModelScope.launch { repository.deleteMeasurement(value) }
+    fun addProgressPhoto(value: ProgressPhotoEntity) = viewModelScope.launch { repository.addProgressPhoto(value) }
+    fun deleteProgressPhoto(value: ProgressPhotoEntity) = viewModelScope.launch { repository.deleteProgressPhoto(value) }
     fun addWorkout(value: WorkoutEntity) = viewModelScope.launch { repository.addWorkout(value) }
     fun createWorkout(value: WorkoutEntity, sets: List<WorkoutSetEntity>) = viewModelScope.launch {
         repository.createWorkout(value, sets)
@@ -63,6 +69,8 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     fun addFood(value: FoodEntryEntity) = viewModelScope.launch { repository.addFood(value) }
     fun deleteFood(value: FoodEntryEntity) = viewModelScope.launch { repository.deleteFood(value) }
     suspend fun lookupBarcode(code: String) = repository.lookupBarcode(code)
+    suspend fun backupDatabase(output: OutputStream) = repository.backupDatabase(output)
+    suspend fun restoreDatabase(input: InputStream) = repository.restoreDatabase(input)
 
     class Factory(private val repository: JimvroRepository) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")

@@ -113,13 +113,14 @@ private fun TemplateCard(
     val scope = rememberCoroutineScope()
     var addLine by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<TemplateLine?>(null) }
+    var confirmTemplateDelete by remember { mutableStateOf(false) }
     JournalCard {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
                 Text(template.name, fontSize = 17.sp)
                 Text("${lines.size} exercises", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = { viewModel.deleteTemplate(template.id) }, modifier = Modifier.size(40.dp)) {
+            IconButton(onClick = { confirmTemplateDelete = true }, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.Outlined.Delete, "Delete template", Modifier.size(18.dp))
             }
         }
@@ -176,6 +177,7 @@ private fun TemplateCard(
             editing = null
         }
     }
+    if (confirmTemplateDelete) ConfirmDeleteDialog("Delete template?", "Logged workouts will stay, but this reusable plan will be removed.", { confirmTemplateDelete = false }) { viewModel.deleteTemplate(template.id); confirmTemplateDelete = false }
 }
 
 @Composable

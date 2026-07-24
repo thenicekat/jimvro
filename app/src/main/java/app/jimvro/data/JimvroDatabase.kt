@@ -449,6 +449,11 @@ interface FoodDao {
     @Insert suspend fun insert(value: FoodEntryEntity): Long
     @Delete suspend fun delete(value: FoodEntryEntity)
 
+    @Query("SELECT * FROM saved_foods WHERE id IN (SELECT MAX(id) FROM saved_foods GROUP BY name) ORDER BY id DESC LIMIT 20")
+    fun observeSaved(): Flow<List<SavedFoodEntity>>
+
+    @Insert suspend fun save(value: SavedFoodEntity): Long
+
     @Query("SELECT * FROM barcode_products WHERE barcode = :barcode")
     suspend fun getBarcodeProduct(barcode: String): BarcodeProductEntity?
 
@@ -506,7 +511,7 @@ abstract class JimvroDatabase : RoomDatabase() {
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_exercises_sourceId ON exercises(sourceId)")
             }
         }
-        private val MIGRATION_3_4 = object : Migration(3, 4) {
+        internal val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE exercises ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE workouts ADD COLUMN finishedAt INTEGER")

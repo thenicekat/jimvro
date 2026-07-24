@@ -1,5 +1,17 @@
 package app.jimvro.ui
 
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -53,6 +65,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.jimvro.AppViewModel
 import app.jimvro.data.ExerciseEntity
@@ -63,7 +78,7 @@ import app.jimvro.ui.theme.ClayMuted
 import kotlinx.coroutines.delay
 
 @Composable
-fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () -> Unit) {
+fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: AppSettings, onBack: () -> Unit) {
     val workout by viewModel.workout(workoutId).collectAsStateWithLifecycle(initialValue = null)
     val sets by viewModel.workoutSets(workoutId).collectAsStateWithLifecycle(initialValue = emptyList())
     val exercises by viewModel.exercises.collectAsStateWithLifecycle()
@@ -71,10 +86,15 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
     var index by remember { mutableIntStateOf(0) }
     var showAddExercise by remember { mutableStateOf(false) }
     var showSummary by remember { mutableStateOf(false) }
+    var pendingSetDelete by remember { mutableStateOf<Long?>(null) }
     var restRemaining by remember { mutableIntStateOf(0) }
+    var restActive by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     LaunchedEffect(groups.size) { index = index.coerceIn(0, (groups.size - 1).coerceAtLeast(0)) }
-    LaunchedEffect(restRemaining) {
+    LaunchedEffect(restRemaining, restActive) {
         if (restRemaining > 0) { delay(1_000); restRemaining-- }
+        else if (restActive) { restActive = false; alertRestComplete(context) }
     }
 
     val totalVolume = sets.sumOf { (it.reps ?: 0) * (it.weightKg ?: 0.0) }
@@ -170,11 +190,16 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
                 item(key = set.id) {
                     TrackerSetRow(
                         set = set,
+                        settings = settings,
                         showLabels = rowIndex == 0,
                         onUpdate = { reps, weight -> viewModel.updateSet(set.id, reps, weight, set.rpe) },
                         onSetType = { viewModel.updateSetType(set.id, it) },
-                        onComplete = { restRemaining = 90 },
-                        onDelete = { viewModel.deleteSet(set.id) },
+                        onComplete = {
+                            restRemaining = settings.restSeconds
+                            restActive = true
+                            if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        },
+                        onDelete = { pendingSetDelete = set.id },
                     )
                 }
             }
@@ -261,7 +286,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
             onCreateExercise = viewModel::findOrCreateExercise,
             onDismiss = { showAddExercise = false },
             onAdd = { exerciseId, reps, weight ->
-                viewModel.appendSet(workoutId, exerciseId, reps, weight)
+                viewModel.appendSet(workoutId, exerciseId, reps, weight?.storageWeight(settings))
                 showAddExercise = false
             },
         )
@@ -275,6 +300,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, onBack: () ->
             dismissButton = { TextButton(onClick = { showSummary = false }) { Text("Stay") } },
         )
     }
+    pendingSetDelete?.let { id -> ConfirmDeleteDialog("Delete set?", "This set will be removed from workout volume.", { pendingSetDelete = null }) { viewModel.deleteSet(id); pendingSetDelete = null } }
 }
 
 @Composable
@@ -360,6 +386,7 @@ private fun PreviousSet.summary(): String = when {
 @Composable
 private fun TrackerSetRow(
     set: WorkoutSetDetail,
+    settings: AppSettings,
     showLabels: Boolean,
     onUpdate: (Int?, Double?) -> Unit,
     onSetType: (String) -> Unit,
@@ -367,7 +394,7 @@ private fun TrackerSetRow(
     onDelete: () -> Unit,
 ) {
     var reps by remember(set.id, set.reps) { mutableStateOf(set.reps?.toString().orEmpty()) }
-    var weight by remember(set.id, set.weightKg) { mutableStateOf(set.weightKg?.prettyTracker().orEmpty()) }
+    var weight by remember(set.id, set.weightKg, settings.weightUnit) { mutableStateOf(set.weightKg?.displayWeight(settings)?.prettyTracker().orEmpty()) }
     val done = reps.isNotBlank() || weight.isNotBlank()
     Column(
         Modifier
@@ -389,17 +416,17 @@ private fun TrackerSetRow(
             }
             if (showLabels) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Reps", Modifier.weight(1f), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Weight (kg)", Modifier.weight(1f), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Weight (${settings.weightUnit})", Modifier.weight(1f), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.width(48.dp))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 TrackerNumberField(reps, "Reps", Modifier.weight(1f)) { value ->
                     reps = value
-                    onUpdate(value.toIntOrNull(), weight.toDoubleOrNull())
+                    onUpdate(value.toIntOrNull(), weight.toDoubleOrNull()?.storageWeight(settings))
                 }
                 TrackerNumberField(weight, "Weight", Modifier.weight(1f)) { value ->
                     weight = value
-                    onUpdate(reps.toIntOrNull(), value.toDoubleOrNull())
+                    onUpdate(reps.toIntOrNull(), value.toDoubleOrNull()?.storageWeight(settings))
                 }
                 Box(
                     Modifier.size(48.dp).background(if (done) Clay else ClayMuted, RoundedCornerShape(12.dp)).clickable(enabled = done) { onComplete() },
@@ -449,9 +476,19 @@ private fun AddExerciseSheet(
         ExerciseSearchField(exercises, selected, { selected = it }, onToggleFavorite, onCreateExercise)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppField(reps, { reps = it.filter(Char::isDigit) }, "Reps", Modifier.weight(1f))
-            AppField(weight, { weight = it.filter { char -> char.isDigit() || char == '.' } }, "Weight (kg)", Modifier.weight(1f))
+            AppField(weight, { weight = it.filter { char -> char.isDigit() || char == '.' } }, "Weight", Modifier.weight(1f))
         }
     }
 }
 
 private fun Double.prettyTracker(): String = if (this % 1.0 == 0.0) toInt().toString() else "%.1f".format(this)
+
+private fun alertRestComplete(context: Context) {
+    val vibrator = if (Build.VERSION.SDK_INT >= 31) context.getSystemService(VibratorManager::class.java).defaultVibrator else @Suppress("DEPRECATION") (context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator)
+    vibrator.vibrate(VibrationEffect.createOneShot(450, VibrationEffect.DEFAULT_AMPLITUDE))
+    val manager = context.getSystemService(NotificationManager::class.java)
+    if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(NotificationChannel("rest_timer", "Rest timer", NotificationManager.IMPORTANCE_HIGH))
+    if (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+        manager.notify(90, NotificationCompat.Builder(context, "rest_timer").setSmallIcon(app.jimvro.R.drawable.ic_launcher).setContentTitle("Rest complete").setContentText("Ready for your next set.").setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true).build())
+    }
+}

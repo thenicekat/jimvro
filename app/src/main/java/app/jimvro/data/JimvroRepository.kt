@@ -6,6 +6,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.InputStream
+import java.io.OutputStream
+import java.io.File
 
 class JimvroRepository(private val database: JimvroDatabase) {
     val measurements = database.measurementDao().observeAll()
@@ -13,6 +16,7 @@ class JimvroRepository(private val database: JimvroDatabase) {
     val workouts = database.workoutDao().observeSummaries()
     val exercises = database.exerciseDao().observeAll()
     val foodEntries = database.foodDao().observeAll()
+    val savedFoods = database.foodDao().observeSaved()
     val templates = database.templateDao().observeTemplates()
     val personalRecords = database.workoutDao().observePersonalRecords()
     val recentExercises = database.exerciseDao().observeRecent()
@@ -31,6 +35,8 @@ class JimvroRepository(private val database: JimvroDatabase) {
 
     suspend fun addMeasurement(value: MeasurementEntity) = database.measurementDao().insert(value)
     suspend fun deleteMeasurement(value: MeasurementEntity) = database.measurementDao().delete(value)
+    suspend fun addProgressPhoto(value: ProgressPhotoEntity) = database.progressPhotoDao().insert(value)
+    suspend fun deleteProgressPhoto(value: ProgressPhotoEntity) = database.progressPhotoDao().delete(value)
     suspend fun addWorkout(value: WorkoutEntity) = database.workoutDao().insertWorkout(value)
     suspend fun createWorkout(value: WorkoutEntity, sets: List<WorkoutSetEntity>) =
         database.workoutDao().createWorkout(value, sets)
@@ -61,10 +67,26 @@ class JimvroRepository(private val database: JimvroDatabase) {
         }
         return database.workoutDao().createWorkout(WorkoutEntity(performedOn = date, name = template.name), stubs)
     }
-    suspend fun addFood(value: FoodEntryEntity) = database.foodDao().insert(value)
+    suspend fun addFood(value: FoodEntryEntity) {
+        database.foodDao().insert(value)
+        database.foodDao().save(SavedFoodEntity(name = value.name, calories = value.calories, proteinG = value.proteinG, carbsG = value.carbsG, fatG = value.fatG))
+    }
     suspend fun deleteFood(value: FoodEntryEntity) = database.foodDao().delete(value)
 
     suspend fun removeBundledExercises() = database.exerciseDao().removeBundledCatalog()
+
+    suspend fun backupDatabase(output: OutputStream) = withContext(Dispatchers.IO) {
+        database.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").close()
+        File(requireNotNull(database.openHelper.writableDatabase.path)).inputStream().use { it.copyTo(output) }
+    }
+
+    suspend fun restoreDatabase(input: InputStream) = withContext(Dispatchers.IO) {
+        val path = requireNotNull(database.openHelper.writableDatabase.path)
+        database.close()
+        File(path).outputStream().use { input.copyTo(it) }
+        File("$path-wal").delete()
+        File("$path-shm").delete()
+    }
 
     suspend fun findOrCreateExercise(rawName: String): ExerciseEntity {
         val name = rawName.trim().replaceFirstChar(Char::uppercase)
@@ -78,7 +100,9 @@ class JimvroRepository(private val database: JimvroDatabase) {
         runCatching {
             val barcode = rawCode.filter(Char::isDigit)
             require(barcode.length >= 6) { "Invalid barcode" }
-            database.foodDao().getBarcodeProduct(barcode)?.let { return@runCatching it }
+            database.foodDao().getBarcodeProduct(barcode)?.takeIf {
+                it.caloriesPer100g != null || it.proteinPer100g != null
+            }?.let { return@runCatching it }
 
             val url = URL(
                 "https://world.openfoodfacts.org/api/v2/product/$barcode.json" +
@@ -97,18 +121,25 @@ class JimvroRepository(private val database: JimvroDatabase) {
                 val name = product.optString("product_name").ifBlank {
                     product.optString("brands").ifBlank { "Scanned food" }
                 }
-                fun number(key: String): Double? =
+                fun number(vararg keys: String): Double? = keys.firstNotNullOfOrNull { key ->
                     nutrients.optDouble(key, Double.NaN).takeUnless(Double::isNaN)
+                }
+                val servingG = product.optDouble("serving_quantity", Double.NaN).takeUnless(Double::isNaN)
+                fun per100(per100Keys: Array<String>, servingKeys: Array<String>): Double? =
+                    number(*per100Keys) ?: number(*servingKeys)?.let { servingValue ->
+                        servingG?.takeIf { it > 0 }?.let { servingValue * 100.0 / it }
+                    }
+                val calories = per100(arrayOf("energy-kcal_100g", "energy_kcal_100g"), arrayOf("energy-kcal_serving", "energy_kcal_serving"))
+                    ?: number("energy_100g")?.div(4.184)
 
                 BarcodeProductEntity(
                     barcode = barcode,
                     name = name,
-                    caloriesPer100g = number("energy-kcal_100g"),
-                    proteinPer100g = number("proteins_100g"),
-                    carbsPer100g = number("carbohydrates_100g"),
-                    fatPer100g = number("fat_100g"),
-                    servingG = product.optDouble("serving_quantity", Double.NaN)
-                        .takeUnless(Double::isNaN),
+                    caloriesPer100g = calories,
+                    proteinPer100g = per100(arrayOf("proteins_100g", "protein_100g"), arrayOf("proteins_serving", "protein_serving")),
+                    carbsPer100g = per100(arrayOf("carbohydrates_100g", "carbs_100g"), arrayOf("carbohydrates_serving", "carbs_serving")),
+                    fatPer100g = per100(arrayOf("fat_100g"), arrayOf("fat_serving")),
+                    servingG = servingG,
                 ).also { database.foodDao().cacheBarcodeProduct(it) }
             } finally {
                 connection.disconnect()
