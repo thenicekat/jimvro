@@ -307,9 +307,9 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit) {
         item {
             Card(
                 colors = CardDefaults.cardColors(
-                    containerColor = if (todayWorkouts.isEmpty()) MaterialTheme.colorScheme.surface else ClayMuted.copy(alpha = 0.55f),
+                    containerColor = MaterialTheme.colorScheme.surface,
                 ),
-                border = BorderStroke(1.dp, if (todayWorkouts.isEmpty()) MaterialTheme.colorScheme.outline.copy(alpha = 0.7f) else Clay.copy(alpha = 0.3f)),
+                border = BorderStroke(1.dp, if (todayWorkouts.isEmpty()) MaterialTheme.colorScheme.outline.copy(alpha = 0.7f) else Clay.copy(alpha = 0.55f)),
                 shape = RoundedCornerShape(12.dp),
             ) {
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -796,7 +796,6 @@ private fun MeasurementDialog(onDismiss: () -> Unit, onSave: (MeasurementEntity)
             AppField(bodyFat, { bodyFat = it }, "Body fat (%)", Modifier.weight(1f))
         }
         AppField(waist, { waist = it }, "Waist (cm)")
-        Text("LIMBS", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppField(leftArm, { leftArm = it }, "Left arm (cm)", Modifier.weight(1f))
             AppField(rightArm, { rightArm = it }, "Right arm (cm)", Modifier.weight(1f))

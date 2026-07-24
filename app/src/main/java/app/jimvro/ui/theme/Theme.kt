@@ -12,14 +12,14 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import app.jimvro.R
 
-val Paper = Color(0xFFF7F3EA)
-val PaperCard = Color(0xFFFFFCF5)
-val Ink = Color(0xFF3C332C)
-val MutedInk = Color(0xFF7B7067)
-val Clay = Color(0xFFA65F47)
-val ClayMuted = Color(0xFFF0D9CD)
-val Espresso = Color(0xFF2A2421)
-val EspressoCard = Color(0xFF38302C)
+val Paper = Color(0xFFF2F0EA)
+val PaperCard = Color(0xFFFAF9F5)
+val Ink = Color(0xFF20221F)
+val MutedInk = Color(0xFF6F716A)
+val Clay = Color(0xFF8B7045)
+val ClayMuted = Color(0xFFE6DFD1)
+val Espresso = Color(0xFF181A17)
+val EspressoCard = Color(0xFF232520)
 
 val Fraunces = FontFamily(
     Font(R.font.fraunces, FontWeight.Normal),
@@ -37,35 +37,35 @@ private val LightColors = lightColorScheme(
     onBackground = Ink,
     surface = PaperCard,
     onSurface = Ink,
-    surfaceVariant = Color(0xFFEFE9DF),
+    surfaceVariant = Color(0xFFE9E6DE),
     onSurfaceVariant = MutedInk,
     surfaceContainerLowest = PaperCard,
     surfaceContainerLow = PaperCard,
     surfaceContainer = PaperCard,
     surfaceContainerHigh = PaperCard,
-    surfaceContainerHighest = Color(0xFFF3EEE5),
-    outline = Color(0xFFD8CEC2),
+    surfaceContainerHighest = Color(0xFFEDEAE3),
+    outline = Color(0xFFCECBC2),
     error = Color(0xFFB3261E),
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFF0E7DE),
+    primary = Color(0xFFF1EEE6),
     onPrimary = Espresso,
-    secondary = Color(0xFFD99172),
+    secondary = Color(0xFFB99A67),
     onSecondary = Espresso,
-    tertiary = Color(0xFFD99172),
+    tertiary = Color(0xFFB99A67),
     background = Espresso,
-    onBackground = Color(0xFFF4ECE4),
+    onBackground = Color(0xFFF0EDE5),
     surface = EspressoCard,
-    onSurface = Color(0xFFF4ECE4),
-    surfaceVariant = Color(0xFF463C37),
-    onSurfaceVariant = Color(0xFFC9BBB1),
+    onSurface = Color(0xFFF0EDE5),
+    surfaceVariant = Color(0xFF30332C),
+    onSurfaceVariant = Color(0xFFBEBDB5),
     surfaceContainerLowest = Espresso,
     surfaceContainerLow = EspressoCard,
     surfaceContainer = EspressoCard,
-    surfaceContainerHigh = Color(0xFF403732),
-    surfaceContainerHighest = Color(0xFF493E38),
-    outline = Color(0xFF665850),
+    surfaceContainerHigh = Color(0xFF2B2E28),
+    surfaceContainerHighest = Color(0xFF34372F),
+    outline = Color(0xFF50534A),
 )
 
 @Composable
