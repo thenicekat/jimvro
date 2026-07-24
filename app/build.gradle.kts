@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "app.jimvro"
+    namespace = "app.divyateja.jimvro"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "app.jimvro"
+        applicationId = "app.divyateja.jimvro"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
