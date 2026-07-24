@@ -515,6 +515,13 @@ private fun BodyScreen(viewModel: AppViewModel) {
                     BodyStat(latest.bodyFatPct?.pretty() ?: "—", "%", "Body fat", Modifier.weight(1f))
                     BodyStat(latest.waistCm?.pretty() ?: "—", "cm", "Waist", Modifier.weight(1f))
                 }
+                if (listOf(latest.leftArmCm, latest.rightArmCm, latest.leftThighCm, latest.rightThighCm).any { it != null }) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        MeasurementPair("Arms", latest.leftArmCm, latest.rightArmCm)
+                        MeasurementPair("Thighs", latest.leftThighCm, latest.rightThighCm)
+                    }
+                }
                 latest.notes?.takeIf(String::isNotBlank)?.let {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                     Text(it, fontSize = 13.sp, lineHeight = 19.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -535,6 +542,10 @@ private fun BodyScreen(viewModel: AppViewModel) {
                                     listOfNotNull(
                                         measurement.bodyFatPct?.let { "${it.pretty()}% fat" },
                                         measurement.waistCm?.let { "${it.pretty()} cm waist" },
+                                        measurement.leftArmCm?.let { "L arm ${it.pretty()}" },
+                                        measurement.rightArmCm?.let { "R arm ${it.pretty()}" },
+                                        measurement.leftThighCm?.let { "L thigh ${it.pretty()}" },
+                                        measurement.rightThighCm?.let { "R thigh ${it.pretty()}" },
                                     ).joinToString("  ·  ").ifBlank { "General measurement" },
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -565,6 +576,16 @@ private fun BodyStat(value: String, unit: String, label: String, modifier: Modif
             if (value != "—") Text(unit, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
         }
         Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun MeasurementPair(label: String, left: Double?, right: Double?) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("L  ${left?.pretty() ?: "—"} cm", fontSize = 12.sp)
+        Spacer(Modifier.width(18.dp))
+        Text("R  ${right?.pretty() ?: "—"} cm", fontSize = 12.sp)
     }
 }
 
@@ -743,13 +764,30 @@ private fun MeasurementDialog(onDismiss: () -> Unit, onSave: (MeasurementEntity)
     var weight by remember { mutableStateOf("") }
     var bodyFat by remember { mutableStateOf("") }
     var waist by remember { mutableStateOf("") }
+    var leftArm by remember { mutableStateOf("") }
+    var rightArm by remember { mutableStateOf("") }
+    var leftThigh by remember { mutableStateOf("") }
+    var rightThigh by remember { mutableStateOf("") }
     var date by remember { mutableStateOf(today()) }
     FormSheet(
         title = "New measurement",
         description = "Log only what you measured today. Every field is optional.",
         primaryLabel = "Add measurement",
-        primaryEnabled = date.isNotBlank() && listOf(weight, bodyFat, waist).any(String::isNotBlank),
-        onPrimary = { onSave(MeasurementEntity(measuredOn = date, weightKg = weight.toDoubleOrNull(), bodyFatPct = bodyFat.toDoubleOrNull(), waistCm = waist.toDoubleOrNull())) },
+        primaryEnabled = date.isNotBlank() && listOf(weight, bodyFat, waist, leftArm, rightArm, leftThigh, rightThigh).any(String::isNotBlank),
+        onPrimary = {
+            onSave(
+                MeasurementEntity(
+                    measuredOn = date,
+                    weightKg = weight.toDoubleOrNull(),
+                    bodyFatPct = bodyFat.toDoubleOrNull(),
+                    waistCm = waist.toDoubleOrNull(),
+                    leftArmCm = leftArm.toDoubleOrNull(),
+                    rightArmCm = rightArm.toDoubleOrNull(),
+                    leftThighCm = leftThigh.toDoubleOrNull(),
+                    rightThighCm = rightThigh.toDoubleOrNull(),
+                ),
+            )
+        },
         onDismiss = onDismiss,
     ) {
         AppField(date, { date = it }, "Date (YYYY-MM-DD)")
@@ -758,6 +796,15 @@ private fun MeasurementDialog(onDismiss: () -> Unit, onSave: (MeasurementEntity)
             AppField(bodyFat, { bodyFat = it }, "Body fat (%)", Modifier.weight(1f))
         }
         AppField(waist, { waist = it }, "Waist (cm)")
+        Text("LIMBS", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            AppField(leftArm, { leftArm = it }, "Left arm (cm)", Modifier.weight(1f))
+            AppField(rightArm, { rightArm = it }, "Right arm (cm)", Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            AppField(leftThigh, { leftThigh = it }, "Left thigh (cm)", Modifier.weight(1f))
+            AppField(rightThigh, { rightThigh = it }, "Right thigh (cm)", Modifier.weight(1f))
+        }
     }
 }
 
