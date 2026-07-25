@@ -453,7 +453,7 @@ private fun TrackerNumberField(value: String, label: String, modifier: Modifier,
     OutlinedTextField(
         value = value,
         onValueChange = { if (it.matches(Regex("^\\d*\\.?\\d*$"))) onChange(it) },
-        modifier = modifier.height(48.dp),
+        modifier = modifier.height(56.dp),
         placeholder = { Text("—") },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
