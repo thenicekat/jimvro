@@ -45,6 +45,8 @@ database migrations.
 
 ## Privacy
 
+See the full [Privacy Policy](PRIVACY.md).
+
 Android cloud backup is disabled. App requests internet access only for product
 lookup and Google Play services barcode scanner delivery. No API key is stored
 in the app.
