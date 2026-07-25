@@ -18,3 +18,8 @@ local.properties
 captures/
 .externalNativeBuild/
 .cxx/
+
+# Local artifacts
+.DS_Store
+*.apk
+*.aab
