@@ -145,7 +145,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                     Column(Modifier.weight(1f)) {
                         Text(workout?.name ?: "Workout", style = MaterialTheme.typography.headlineMedium)
                         Text(
-                            "${workout?.performedOn.orEmpty()} · ${elapsedSeconds.sessionDuration()}",
+                            "${formatDateForDisplay(workout?.performedOn.orEmpty())} · ${elapsedSeconds.sessionDuration()}",
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = if (editingFinished) Modifier.clickable { showDurationEdit = true } else Modifier,
@@ -394,7 +394,7 @@ private fun PreviousPerformance(
     ) {
         Row(Modifier.fillMaxWidth()) {
             Text("LAST TIME", Modifier.weight(1f), fontSize = 10.sp, letterSpacing = 1.3.sp, color = Clay)
-            Text(previous.first().performedOn, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(formatDateForDisplay(previous.first().performedOn), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(
             previous.joinToString("  ·  ") { it.summary() },

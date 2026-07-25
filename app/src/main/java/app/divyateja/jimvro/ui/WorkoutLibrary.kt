@@ -210,7 +210,7 @@ fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit, onExercise: (Long
                     Row(Modifier.fillMaxWidth().clickable { onExercise(record.exerciseId) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(record.exerciseName, fontSize = 14.sp)
-                            Text(record.performedOn, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(formatDateForDisplay(record.performedOn), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text("${record.weightKg.clean()} kg", fontSize = 18.sp)
                         record.reps?.let { Text(" × $it", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -235,13 +235,13 @@ fun ExerciseProgressScreen(viewModel: AppViewModel, exerciseId: Long, onBack: ()
         if (progress.size >= 2) {
             JournalCard {
                 Text("Volume trend", fontSize = 14.sp)
-                LineTrendChart(progress.map { ChartPoint(it.performedOn.takeLast(5), it.volumeKg) })
+                LineTrendChart(progress.map { ChartPoint(formatDateShort(it.performedOn), it.volumeKg) })
             }
             val weighted = progress.filter { it.maxWeightKg != null }
             if (weighted.size >= 2) {
                 JournalCard {
                     Text("Top weight", fontSize = 14.sp)
-                    LineTrendChart(weighted.map { ChartPoint(it.performedOn.takeLast(5), it.maxWeightKg!!) }, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LineTrendChart(weighted.map { ChartPoint(formatDateShort(it.performedOn), it.maxWeightKg!!) }, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         } else {
@@ -250,7 +250,7 @@ fun ExerciseProgressScreen(viewModel: AppViewModel, exerciseId: Long, onBack: ()
         Text("SESSIONS", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         progress.asReversed().forEachIndexed { index, point ->
             Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(point.performedOn, Modifier.weight(1f), fontSize = 13.sp)
+                Text(formatDateForDisplay(point.performedOn), Modifier.weight(1f), fontSize = 13.sp)
                 Text("${point.volumeKg.clean()} kg vol", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 point.maxWeightKg?.let { Text("  ·  ${it.clean()} kg", fontSize = 12.sp) }
             }

@@ -637,7 +637,7 @@ private fun WorkoutsScreen(
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(workout.name ?: "Workout")
-                            Text(workout.performedOn, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                            Text(formatDateForDisplay(workout.performedOn), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                         }
                         IconButton(onClick = { pendingDelete = workout.id }) {
                             Icon(Icons.Outlined.Delete, "Delete workout")
@@ -718,7 +718,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
                         IconButton(onClick = { viewModel.deleteProgressPhoto(photo); File(photo.uri).delete() }, modifier = Modifier.align(Alignment.TopEnd)) {
                             Icon(Icons.Outlined.Delete, "Delete photo", tint = MaterialTheme.colorScheme.onSurface)
                         }
-                        Text(photo.capturedOn, Modifier.align(Alignment.BottomStart).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)).padding(6.dp), fontSize = 10.sp)
+                        Text(formatDateForDisplay(photo.capturedOn), Modifier.align(Alignment.BottomStart).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)).padding(6.dp), fontSize = 10.sp)
                     }
                 }
             }
@@ -754,7 +754,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text("LATEST", fontSize = 10.sp, letterSpacing = 1.4.sp, color = Clay)
-                        Text(latest.measuredOn, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(formatDateForDisplay(latest.measuredOn), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     IconButton(onClick = { pendingMeasurement = latest }, modifier = Modifier.size(36.dp)) {
                         Icon(Icons.Outlined.Delete, "Delete latest measurement", Modifier.size(17.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -787,7 +787,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(measurement.measuredOn, fontSize = 13.sp)
+                                Text(formatDateForDisplay(measurement.measuredOn), fontSize = 13.sp)
                                 Text(
                                     listOfNotNull(
                                         measurement.bodyFatPct?.let { "${it.pretty()}% fat" },
@@ -829,7 +829,7 @@ private fun bodyTrendPoints(measurements: List<MeasurementEntity>, metric: Strin
             "Thighs" -> listOfNotNull(measurement.leftThighCm, measurement.rightThighCm).takeIf { it.isNotEmpty() }?.average()
             else -> null
         }
-        value?.let { raw -> ChartPoint(measurement.measuredOn.takeLast(5), if (metric == "Weight") raw.displayWeight(settings) else if (metric != "Body fat") raw.displayLength(settings) else raw) }
+        value?.let { raw -> ChartPoint(formatDateShort(measurement.measuredOn), if (metric == "Weight") raw.displayWeight(settings) else if (metric != "Body fat") raw.displayLength(settings) else raw) }
     }
 
 @Composable
@@ -903,9 +903,9 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
                 JournalCard {
                     Text("7-day nutrition", fontSize = 14.sp)
                     Text("Calories", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    LineTrendChart(nutritionDays.map { ChartPoint(it.first.takeLast(5), it.second.first) })
+                    LineTrendChart(nutritionDays.map { ChartPoint(formatDateShort(it.first), it.second.first) })
                     Text("Protein", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    LineTrendChart(nutritionDays.map { ChartPoint(it.first.takeLast(5), it.second.second) }, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LineTrendChart(nutritionDays.map { ChartPoint(formatDateShort(it.first), it.second.second) }, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Button(
@@ -948,7 +948,7 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (foods.isEmpty()) EmptyState("No food logged", "Add manually or scan a packaged food.")
             foods.groupBy { it.consumedOn }.forEach { (date, entries) ->
-                Text(date)
+                Text(formatDateForDisplay(date))
                 entries.forEachIndexed { index, food ->
                     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1228,8 +1228,12 @@ private fun DateField(value: String, onChange: (String) -> Unit) {
     }
 }
 
-private fun formatDateForDisplay(value: String): String = runCatching {
+internal fun formatDateForDisplay(value: String): String = runCatching {
     LocalDate.parse(value).format(DateTimeFormatter.ofPattern("EEE, d MMM yyyy", Locale.getDefault()))
+}.getOrDefault(value)
+
+internal fun formatDateShort(value: String): String = runCatching {
+    LocalDate.parse(value).format(DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()))
 }.getOrDefault(value)
 
 @Composable
