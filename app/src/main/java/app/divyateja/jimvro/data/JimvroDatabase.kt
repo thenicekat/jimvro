@@ -320,6 +320,7 @@ interface WorkoutDao {
     @Query("UPDATE workout_sets SET supersetGroup = :groupId WHERE exerciseId IN (:exerciseIds) AND workoutId = :workoutId")
     suspend fun setSuperset(workoutId: Long, exerciseIds: List<Long>, groupId: Int?)
     @Query("UPDATE workouts SET finishedAt = :finishedAt WHERE id = :workoutId") suspend fun finishWorkout(workoutId: Long, finishedAt: Long)
+    @Query("UPDATE workouts SET finishedAt = :finishedAt WHERE id = :workoutId") suspend fun updateFinishedAt(workoutId: Long, finishedAt: Long)
 
     @Query("DELETE FROM workout_sets WHERE id = :setId")
     suspend fun deleteSet(setId: Long)

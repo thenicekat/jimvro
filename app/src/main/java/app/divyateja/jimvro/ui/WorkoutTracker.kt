@@ -91,6 +91,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
     var showAddExercise by remember { mutableStateOf(false) }
     var showSummary by remember { mutableStateOf(false) }
     var editingFinished by remember { mutableStateOf(false) }
+    var showDurationEdit by remember { mutableStateOf(false) }
     var pendingSetDelete by remember { mutableStateOf<Long?>(null) }
     var restRemaining by remember { mutableIntStateOf(0) }
     var restActive by remember { mutableStateOf(false) }
@@ -143,7 +144,12 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                     Column(Modifier.weight(1f)) {
                         Text(workout?.name ?: "Workout", style = MaterialTheme.typography.headlineMedium)
-                        Text("${workout?.performedOn.orEmpty()} · ${elapsedSeconds.sessionDuration()}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "${workout?.performedOn.orEmpty()} · ${elapsedSeconds.sessionDuration()}",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = if (editingFinished) Modifier.clickable { showDurationEdit = true } else Modifier,
+                        )
                     }
                     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         if (totalVolume > 0) {
@@ -305,6 +311,18 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
             confirmButton = { TextButton(onClick = { showSummary = false; onBack() }) { Text("Done") } },
             dismissButton = { TextButton(onClick = { showSummary = false }) { Text("Stay") } },
         )
+    }
+    if (showDurationEdit) {
+        workout?.let { w ->
+            DurationEditDialog(
+                currentSeconds = elapsedSeconds,
+                onDismiss = { showDurationEdit = false },
+                onConfirm = { newSeconds ->
+                    viewModel.updateWorkoutDuration(workoutId, w.createdAt, newSeconds)
+                    showDurationEdit = false
+                },
+            )
+        }
     }
     pendingSetDelete?.let { id -> ConfirmDeleteDialog("Delete set?", "This set will be removed from workout volume.", { pendingSetDelete = null }) { viewModel.deleteSet(id); pendingSetDelete = null } }
 }
@@ -491,6 +509,44 @@ private fun AddExerciseSheet(
             AppField(weight, { weight = it.filter { char -> char.isDigit() || char == '.' } }, "Weight", Modifier.weight(1f))
         }
     }
+}
+
+@Composable
+private fun DurationEditDialog(currentSeconds: Long, onDismiss: () -> Unit, onConfirm: (Long) -> Unit) {
+    var hours by remember { mutableStateOf((currentSeconds / 3600).toString()) }
+    var minutes by remember { mutableStateOf(((currentSeconds % 3600) / 60).toString()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit duration") },
+        text = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = hours,
+                    onValueChange = { hours = it.filter(Char::isDigit).take(2) },
+                    label = { Text("Hours") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                Text(":", fontSize = 20.sp)
+                OutlinedTextField(
+                    value = minutes,
+                    onValueChange = { minutes = it.filter(Char::isDigit).take(2) },
+                    label = { Text("Minutes") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val totalSeconds = (hours.toLongOrNull() ?: 0L) * 3600 + (minutes.toLongOrNull() ?: 0L) * 60
+                if (totalSeconds > 0) onConfirm(totalSeconds)
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 private fun Double.prettyTracker(): String = if (this % 1.0 == 0.0) toInt().toString() else "%.1f".format(this)

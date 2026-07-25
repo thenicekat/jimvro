@@ -3,13 +3,10 @@ package app.divyateja.jimvro.ui
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.ComponentActivity
 import android.content.res.Configuration
-import android.app.AlarmManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.os.Build
-import android.os.SystemClock
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.background
@@ -116,6 +113,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import app.divyateja.jimvro.AppViewModel
+import app.divyateja.jimvro.JimvroApplication
 import app.divyateja.jimvro.HealthConnectSync
 import app.divyateja.jimvro.data.BarcodeProductEntity
 import app.divyateja.jimvro.data.ExerciseEntity
@@ -226,13 +224,16 @@ fun JimvroApp(
     val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         uri?.let { scope.launch { context.contentResolver.openOutputStream(it)?.use { output -> viewModel.backupDatabase(output) } } }
     }
+    val activity = LocalActivity.current
     val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { scope.launch {
             runCatching {
                 context.contentResolver.openInputStream(it)?.use { input -> viewModel.restoreDatabase(input) }
                     ?: error("Could not open selected backup")
             }.onSuccess {
-                scheduleAppRestart(context)
+                (context.applicationContext as JimvroApplication).reloadAfterRestore()
+                (activity as? ComponentActivity)?.viewModelStore?.clear()
+                activity?.recreate()
             }.onFailure { error ->
                 restoreMessage = error.message ?: "Restore failed"
             }
@@ -382,20 +383,6 @@ fun JimvroApp(
     }
 }
 
-private fun scheduleAppRestart(context: Context) {
-    val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-        ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-        ?: return
-    val pendingIntent = PendingIntent.getActivity(
-        context,
-        701,
-        launchIntent,
-        PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-    )
-    val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-    alarm.set(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + 350, pendingIntent)
-    android.os.Process.killProcess(android.os.Process.myPid())
-}
 
 @Composable
 internal fun Page(
@@ -467,7 +454,6 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
     val protein = todayFoods.sumOf { it.proteinG ?: 0.0 }
     val locale = LocalConfiguration.current.primaryLocale()
     val todayWorkouts = workouts.filter { it.performedOn == date }
-    val setCount = todayWorkouts.sumOf { it.setCount }
     val volume = todayWorkouts.sumOf { it.volumeKg }
     val weeklyVolume = remember(workouts) { weeklyVolumePoints(workouts) }
     val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
@@ -502,8 +488,8 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
                             }
                             Spacer(Modifier.height(14.dp))
                             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(if (volume > 0) volume.pretty() else setCount.toString(), fontSize = 44.sp, fontWeight = FontWeight.Light, lineHeight = 48.sp)
-                                Text(if (volume > 0) "kg moved" else if (setCount == 0) "sets — rest day" else "sets", fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 7.dp))
+                                Text(volume.displayWeight(settings).pretty(), fontSize = 44.sp, fontWeight = FontWeight.Light, lineHeight = 48.sp)
+                                Text("${settings.weightUnit} moved", fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 7.dp))
                             }
                             if (todayWorkouts.isNotEmpty()) Text("${todayWorkouts.size} session${if (todayWorkouts.size == 1) "" else "s"} today", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }

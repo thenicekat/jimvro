@@ -48,6 +48,8 @@ class JimvroRepository(private val database: JimvroDatabase) {
         database.workoutDao().updateSet(setId, reps, weightKg, rpe)
     suspend fun updateSetType(setId: Long, setType: String) = database.workoutDao().updateSetType(setId, setType)
     suspend fun finishWorkout(workoutId: Long) = database.workoutDao().finishWorkout(workoutId, System.currentTimeMillis())
+    suspend fun updateWorkoutDuration(workoutId: Long, createdAt: Long, durationSeconds: Long) =
+        database.workoutDao().updateFinishedAt(workoutId, createdAt + durationSeconds * 1_000)
     suspend fun setSuperset(workoutId: Long, exerciseIds: List<Long>, groupId: Int?) = database.workoutDao().setSuperset(workoutId, exerciseIds, groupId)
     suspend fun toggleFavorite(exerciseId: Long) = database.exerciseDao().toggleFavorite(exerciseId)
     suspend fun deleteSet(setId: Long) = database.workoutDao().deleteSet(setId)

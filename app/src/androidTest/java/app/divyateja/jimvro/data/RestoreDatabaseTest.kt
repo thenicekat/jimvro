@@ -24,6 +24,7 @@ class RestoreDatabaseTest {
         val database = Room.databaseBuilder(context, JimvroDatabase::class.java, name).build()
         val repository = JimvroRepository(database)
         repository.addMeasurement(MeasurementEntity(measuredOn = "2026-07-24", weightKg = 70.0))
+        repository.seedStockTemplates()
         val backup = ByteArrayOutputStream().also { repository.backupDatabase(it) }.toByteArray()
         repository.addMeasurement(MeasurementEntity(measuredOn = "2026-07-25", weightKg = 71.0))
 
@@ -31,6 +32,7 @@ class RestoreDatabaseTest {
 
         val reopened = Room.databaseBuilder(context, JimvroDatabase::class.java, name).build()
         assertEquals(listOf("2026-07-24"), reopened.measurementDao().observeAll().first().map { it.measuredOn })
+        assertEquals(5, reopened.templateDao().observeTemplates().first().size)
         reopened.close()
         context.deleteDatabase(name)
         }
