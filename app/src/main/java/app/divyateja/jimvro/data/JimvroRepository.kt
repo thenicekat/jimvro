@@ -1,5 +1,6 @@
 package app.divyateja.jimvro.data
 
+import android.database.sqlite.SQLiteDatabase
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
@@ -127,16 +128,50 @@ class JimvroRepository(private val database: JimvroDatabase) {
     }
 
     suspend fun backupDatabase(output: OutputStream) = withContext(Dispatchers.IO) {
-        database.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").close()
+        database.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").use { it.moveToFirst() }
         File(requireNotNull(database.openHelper.writableDatabase.path)).inputStream().use { it.copyTo(output) }
     }
 
     suspend fun restoreDatabase(input: InputStream) = withContext(Dispatchers.IO) {
         val path = requireNotNull(database.openHelper.writableDatabase.path)
+        val target = File(path)
+        val staged = File(target.parentFile, "${target.name}.restore")
+        val previous = File(target.parentFile, "${target.name}.before-restore")
+        staged.outputStream().use { input.copyTo(it) }
+        validateBackup(staged)
+        database.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").use { it.moveToFirst() }
         database.close()
-        File(path).outputStream().use { input.copyTo(it) }
+        previous.delete()
+        check(target.renameTo(previous)) { "Could not prepare current database for restore" }
+        if (!staged.renameTo(target)) {
+            previous.renameTo(target)
+            error("Could not install restored database")
+        }
         File("$path-wal").delete()
         File("$path-shm").delete()
+        previous.delete()
+    }
+
+    private fun validateBackup(file: File) {
+        val header = ByteArray(16)
+        file.inputStream().use { stream ->
+            require(stream.read(header) == header.size && header.decodeToString() == "SQLite format 3\u0000") {
+                "Selected file is not a Jimvro database backup"
+            }
+        }
+        val restored = SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY)
+        restored.use { db ->
+            val version = db.rawQuery("PRAGMA user_version", null).use { cursor ->
+                check(cursor.moveToFirst())
+                cursor.getInt(0)
+            }
+            require(version in 1..4) { "Unsupported backup version: $version" }
+            val required = setOf("measurements", "workouts", "workout_sets", "food_entries")
+            val present = db.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null).use { cursor ->
+                buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) }
+            }
+            require(present.containsAll(required)) { "Selected database is missing Jimvro data tables" }
+        }
     }
 
     suspend fun findOrCreateExercise(rawName: String): ExerciseEntity {

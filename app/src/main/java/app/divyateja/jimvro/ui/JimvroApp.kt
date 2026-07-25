@@ -4,7 +4,12 @@ import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.content.res.Configuration
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
 import android.os.Build
+import android.os.SystemClock
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.background
@@ -182,6 +187,7 @@ fun JimvroApp(
     }
     var settingsOpen by remember { mutableStateOf(false) }
     var healthMessage by remember { mutableStateOf<String?>(null) }
+    var restoreMessage by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val runHealthSync = {
@@ -222,8 +228,14 @@ fun JimvroApp(
     }
     val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { scope.launch {
-            context.contentResolver.openInputStream(it)?.use { input -> viewModel.restoreDatabase(input) }
-            android.os.Process.killProcess(android.os.Process.myPid())
+            runCatching {
+                context.contentResolver.openInputStream(it)?.use { input -> viewModel.restoreDatabase(input) }
+                    ?: error("Could not open selected backup")
+            }.onSuccess {
+                scheduleAppRestart(context)
+            }.onFailure { error ->
+                restoreMessage = error.message ?: "Restore failed"
+            }
         } }
     }
     val csvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
@@ -360,6 +372,29 @@ fun JimvroApp(
             confirmButton = { TextButton(onClick = { healthMessage = null }) { Text("Done") } },
         )
     }
+    restoreMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { restoreMessage = null },
+            title = { Text("Restore failed") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { restoreMessage = null }) { Text("Done") } },
+        )
+    }
+}
+
+private fun scheduleAppRestart(context: Context) {
+    val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        ?: return
+    val pendingIntent = PendingIntent.getActivity(
+        context,
+        701,
+        launchIntent,
+        PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+    val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    alarm.set(AlarmManager.ELAPSED_REALTIME, SystemClock.elapsedRealtime() + 350, pendingIntent)
+    android.os.Process.killProcess(android.os.Process.myPid())
 }
 
 @Composable
