@@ -7,6 +7,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.ComponentActivity
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.content.res.Configuration
 import android.content.Context
 import android.os.Build
@@ -50,6 +51,8 @@ import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.RotateLeft
+import androidx.compose.material.icons.outlined.RotateRight
 import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FitnessCenter
@@ -162,6 +165,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
@@ -707,6 +712,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
     var pendingPhotoPath by remember { mutableStateOf<String?>(null) }
     var selectedPhoto by remember { mutableStateOf<ProgressPhotoEntity?>(null) }
     var comparePhotos by remember { mutableStateOf(false) }
+    var photoRevision by remember { mutableStateOf(0) }
     var photosUnlocked by remember { mutableStateOf(false) }
     var photoAuthError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
@@ -838,6 +844,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
                     Modifier.fillMaxWidth().height(320.dp).clip(RoundedCornerShape(12.dp)).clickable { selectedPhoto = latestPhoto },
                     maxWidth = 1200,
                     maxHeight = 1280,
+                    revision = photoRevision,
                 )
                 latestPhoto.notes?.takeIf(String::isNotBlank)?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -852,7 +859,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
                 Text("TIMELINE", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     progressPhotos.forEach { photo ->
-                        ProgressPhotoCard(photo) { selectedPhoto = photo }
+                        ProgressPhotoCard(photo, photoRevision) { selectedPhoto = photo }
                     }
                 }
             }
@@ -967,15 +974,16 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
             ProgressPhotoViewer(
                 photo = photo,
                 onDismiss = { selectedPhoto = null },
-                onDelete = {
+            onDelete = {
                     viewModel.deleteProgressPhoto(photo)
                     File(photo.uri).delete()
-                    selectedPhoto = null
-                },
+                selectedPhoto = null
+            },
+            onRotated = { photoRevision++ },
             )
         }
         if (comparePhotos && progressPhotos.size >= 2) {
-            ProgressPhotoComparison(progressPhotos.last(), progressPhotos.first()) { comparePhotos = false }
+            ProgressPhotoComparison(progressPhotos.last(), progressPhotos.first(), photoRevision) { comparePhotos = false }
         }
     }
     pendingMeasurement?.let { value -> ConfirmDeleteDialog("Delete measurement?", "This reading will be removed from trends.", { pendingMeasurement = null }) { viewModel.deleteMeasurement(value); pendingMeasurement = null } }
@@ -1007,10 +1015,11 @@ private fun StoredProgressPhoto(
     modifier: Modifier,
     maxWidth: Int = 768,
     maxHeight: Int = 984,
+    revision: Int = 0,
 ) {
-    var bitmap by remember(photo.uri) { mutableStateOf<ImageBitmap?>(null) }
-    var loaded by remember(photo.uri) { mutableStateOf(false) }
-    LaunchedEffect(photo.uri) {
+    var bitmap by remember(photo.uri, revision) { mutableStateOf<ImageBitmap?>(null) }
+    var loaded by remember(photo.uri, revision) { mutableStateOf(false) }
+    LaunchedEffect(photo.uri, revision) {
         bitmap = withContext(Dispatchers.IO) {
             decodeSampledBitmap(photo.uri, maxWidth, maxHeight)?.asImageBitmap()
         }
@@ -1030,9 +1039,9 @@ private fun StoredProgressPhoto(
 }
 
 @Composable
-private fun ProgressPhotoCard(photo: ProgressPhotoEntity, onClick: () -> Unit) {
+private fun ProgressPhotoCard(photo: ProgressPhotoEntity, revision: Int, onClick: () -> Unit) {
     Column(Modifier.width(112.dp).clickable(onClick = onClick), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        StoredProgressPhoto(photo, Modifier.fillMaxWidth().height(142.dp).clip(RoundedCornerShape(8.dp)))
+        StoredProgressPhoto(photo, Modifier.fillMaxWidth().height(142.dp).clip(RoundedCornerShape(8.dp)), revision = revision)
         Text(formatDateShort(photo.capturedOn), fontSize = 11.sp)
         photo.notes?.takeIf(String::isNotBlank)?.let {
             Text(it.substringBefore(" · "), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
@@ -1049,6 +1058,16 @@ private fun ProgressPhotoDetailsDialog(
     var date by remember { mutableStateOf(today()) }
     var pose by remember { mutableStateOf("Front") }
     var note by remember { mutableStateOf("") }
+    var revision by remember { mutableStateOf(0) }
+    var rotateError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val rotate: (Float) -> Unit = { degrees ->
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { rotateProgressPhoto(path, degrees) } }
+                .onSuccess { revision++; rotateError = null }
+                .onFailure { rotateError = it.message ?: "Could not rotate photo" }
+        }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add progress photo") },
@@ -1057,7 +1076,13 @@ private fun ProgressPhotoDetailsDialog(
                 StoredProgressPhoto(
                     ProgressPhotoEntity(capturedOn = date, uri = path),
                     Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(10.dp)),
+                    revision = revision,
                 )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    TextButton(onClick = { rotate(-90f) }) { Icon(Icons.Outlined.RotateLeft, null); Text("Left") }
+                    TextButton(onClick = { rotate(90f) }) { Icon(Icons.Outlined.RotateRight, null); Text("Right") }
+                }
+                rotateError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                 DateField(date) { date = it }
                 Text("Pose", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -1079,7 +1104,17 @@ private fun ProgressPhotoDetailsDialog(
 }
 
 @Composable
-private fun ProgressPhotoViewer(photo: ProgressPhotoEntity, onDismiss: () -> Unit, onDelete: () -> Unit) {
+private fun ProgressPhotoViewer(photo: ProgressPhotoEntity, onDismiss: () -> Unit, onDelete: () -> Unit, onRotated: () -> Unit) {
+    var revision by remember(photo.uri) { mutableStateOf(0) }
+    var rotateError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val rotate: (Float) -> Unit = { degrees ->
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { rotateProgressPhoto(photo.uri, degrees) } }
+                .onSuccess { revision++; onRotated(); rotateError = null }
+                .onFailure { rotateError = it.message ?: "Could not rotate photo" }
+        }
+    }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxWidth().fillMaxHeight(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -1095,10 +1130,17 @@ private fun ProgressPhotoViewer(photo: ProgressPhotoEntity, onDismiss: () -> Uni
                     Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(12.dp)),
                     maxWidth = 1600,
                     maxHeight = 2200,
+                    revision = revision,
                 )
-                TextButton(onClick = onDelete, modifier = Modifier.align(Alignment.End)) {
-                    Icon(Icons.Outlined.Delete, null)
-                    Text("Delete photo")
+                rotateError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { rotate(-90f) }) { Icon(Icons.Outlined.RotateLeft, null); Text("Left") }
+                    TextButton(onClick = { rotate(90f) }) { Icon(Icons.Outlined.RotateRight, null); Text("Right") }
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = onDelete) {
+                        Icon(Icons.Outlined.Delete, null)
+                        Text("Delete")
+                    }
                 }
             }
         }
@@ -1106,7 +1148,7 @@ private fun ProgressPhotoViewer(photo: ProgressPhotoEntity, onDismiss: () -> Uni
 }
 
 @Composable
-private fun ProgressPhotoComparison(first: ProgressPhotoEntity, latest: ProgressPhotoEntity, onDismiss: () -> Unit) {
+private fun ProgressPhotoComparison(first: ProgressPhotoEntity, latest: ProgressPhotoEntity, revision: Int, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxWidth().fillMaxHeight(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -1118,8 +1160,8 @@ private fun ProgressPhotoComparison(first: ProgressPhotoEntity, latest: Progress
                     TextButton(onClick = onDismiss) { Text("Close") }
                 }
                 Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ComparisonPhoto("FIRST", first, Modifier.weight(1f))
-                    ComparisonPhoto("LATEST", latest, Modifier.weight(1f))
+                    ComparisonPhoto("FIRST", first, revision, Modifier.weight(1f))
+                    ComparisonPhoto("LATEST", latest, revision, Modifier.weight(1f))
                 }
                 Text("Best compared with matching pose, distance, and lighting.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -1128,7 +1170,7 @@ private fun ProgressPhotoComparison(first: ProgressPhotoEntity, latest: Progress
 }
 
 @Composable
-private fun ComparisonPhoto(label: String, photo: ProgressPhotoEntity, modifier: Modifier = Modifier) {
+private fun ComparisonPhoto(label: String, photo: ProgressPhotoEntity, revision: Int, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Text(label, fontSize = 10.sp, letterSpacing = 1.3.sp, color = Clay)
         StoredProgressPhoto(
@@ -1136,6 +1178,7 @@ private fun ComparisonPhoto(label: String, photo: ProgressPhotoEntity, modifier:
             Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(10.dp)),
             maxWidth = 900,
             maxHeight = 1600,
+            revision = revision,
         )
         Text(formatDateShort(photo.capturedOn), fontSize = 12.sp)
         photo.notes?.takeIf(String::isNotBlank)?.let { Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2) }
@@ -1154,6 +1197,34 @@ private fun decodeSampledBitmap(path: String, maxWidth: Int, maxHeight: Int): Bi
         inSampleSize = sampleSize
         inPreferredConfig = Bitmap.Config.RGB_565
     })
+}
+
+internal fun rotateProgressPhoto(path: String, degrees: Float) {
+    val sourceFile = File(path)
+    check(sourceFile.isFile) { "Photo file is unavailable" }
+    val source = checkNotNull(decodeSampledBitmap(path, 2400, 2400)) { "Photo could not be decoded" }
+    val rotated = Bitmap.createBitmap(source, 0, 0, source.width, source.height, Matrix().apply { postRotate(degrees) }, true)
+    val temporary = File(sourceFile.parentFile, "${sourceFile.name}.rotating")
+    try {
+        val format = if (sourceFile.extension.equals("png", ignoreCase = true)) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+        temporary.outputStream().use { output ->
+            check(rotated.compress(format, 95, output)) { "Photo could not be saved" }
+        }
+        runCatching {
+            Files.move(
+                temporary.toPath(),
+                sourceFile.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE,
+            )
+        }.getOrElse {
+            Files.move(temporary.toPath(), sourceFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
+    } finally {
+        temporary.delete()
+        if (rotated !== source) rotated.recycle()
+        source.recycle()
+    }
 }
 
 private fun bodyTrendPoints(measurements: List<MeasurementEntity>, metric: String, settings: AppSettings): List<ChartPoint> =
