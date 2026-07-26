@@ -1,7 +1,7 @@
 package app.divyateja.jimvro
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
@@ -14,7 +14,7 @@ import app.divyateja.jimvro.ui.AppSettings
 import app.divyateja.jimvro.ui.theme.JimvroTheme
 import app.divyateja.jimvro.ui.theme.ThemeMode
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

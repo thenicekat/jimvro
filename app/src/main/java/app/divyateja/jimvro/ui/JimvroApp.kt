@@ -11,6 +11,7 @@ import android.content.res.Configuration
 import android.content.Context
 import android.os.Build
 import android.webkit.MimeTypeMap
+import android.view.WindowManager
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.background
@@ -53,6 +54,7 @@ import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FitnessCenter
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Scale
 import androidx.compose.material.icons.outlined.Settings
@@ -80,6 +82,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -87,6 +90,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -108,9 +112,18 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
@@ -691,16 +704,80 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
     var selectedTrend by remember { mutableStateOf("Weight") }
     var pendingMeasurement by remember { mutableStateOf<MeasurementEntity?>(null) }
     var photoError by remember { mutableStateOf<String?>(null) }
+    var pendingPhotoPath by remember { mutableStateOf<String?>(null) }
+    var selectedPhoto by remember { mutableStateOf<ProgressPhotoEntity?>(null) }
+    var comparePhotos by remember { mutableStateOf(false) }
+    var photosUnlocked by remember { mutableStateOf(false) }
+    var photoAuthError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    val activity = LocalActivity.current as? FragmentActivity
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
+    val photoAuthenticators = BiometricManager.Authenticators.BIOMETRIC_WEAK or
+        BiometricManager.Authenticators.DEVICE_CREDENTIAL
+    val biometricPrompt = remember(activity) {
+        activity?.let { host ->
+            BiometricPrompt(
+                host,
+                ContextCompat.getMainExecutor(context),
+                object : BiometricPrompt.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                        photosUnlocked = true
+                        photoAuthError = null
+                    }
+
+                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                        if (errorCode != BiometricPrompt.ERROR_USER_CANCELED && errorCode != BiometricPrompt.ERROR_CANCELED) {
+                            photoAuthError = errString.toString()
+                        }
+                    }
+                },
+            )
+        }
+    }
+    val unlockPhotos = {
+        if (activity == null || biometricPrompt == null) {
+            photoAuthError = "Device authentication is unavailable"
+        } else {
+            when (BiometricManager.from(context).canAuthenticate(photoAuthenticators)) {
+                BiometricManager.BIOMETRIC_SUCCESS -> biometricPrompt.authenticate(
+                    BiometricPrompt.PromptInfo.Builder()
+                        .setTitle("Unlock progress photos")
+                        .setSubtitle("Use your device screen lock")
+                        .setAllowedAuthenticators(photoAuthenticators)
+                        .build(),
+                )
+                BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> photoAuthError = "Set up a device PIN, pattern, password, or biometric first."
+                else -> photoAuthError = "Secure device authentication is unavailable."
+            }
+        }
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                photosUnlocked = false
+                selectedPhoto = null
+                comparePhotos = false
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    DisposableEffect(photosUnlocked, activity) {
+        if (photosUnlocked) activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        onDispose {
+            if (photosUnlocked) activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         scope.launch {
             runCatching {
                 withContext(Dispatchers.IO) { importProgressPhoto(context, uri) }
             }.onSuccess { path ->
-                viewModel.addProgressPhoto(ProgressPhotoEntity(capturedOn = today(), uri = path))
+                pendingPhotoPath = path
                 photoError = null
+                unlockPhotos()
             }.onFailure { error ->
                 photoError = error.message ?: "Could not import photo"
             }
@@ -712,21 +789,70 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
         "Weight, body fat, and tape measurements over time.",
         action = { HeaderAddButton("Add") { showAdd = true } },
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Progress photos", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            TextButton(onClick = {
-                photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-            }) { Icon(Icons.Outlined.Add, null); Text("Photo") }
-        }
-        photoError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-        if (progressPhotos.isEmpty()) {
-            Text("Private photos stay on this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (!photosUnlocked) {
+            Column(
+                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)).padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(Icons.Outlined.Lock, null, tint = Clay)
+                Text("Progress photos are locked", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Unlock with your device PIN, pattern, password, or biometric. Photos relock whenever Jimvro leaves the foreground.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(onClick = unlockPhotos) { Text("Unlock photos") }
+                photoAuthError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            }
         } else {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                progressPhotos.forEach { photo ->
-                    ProgressPhotoCard(photo) {
-                        viewModel.deleteProgressPhoto(photo)
-                        File(photo.uri).delete()
+            Text("PROGRESS PHOTOS", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            photoError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            if (progressPhotos.isEmpty()) {
+                Column(
+                    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)).padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text("Build a visual timeline", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Use the same pose, distance, and lighting every few weeks. Photos stay private on this device.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(onClick = {
+                        photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }) { Icon(Icons.Outlined.Add, null); Text("Add first photo") }
+                }
+            } else {
+                val latestPhoto = progressPhotos.first()
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Latest", style = MaterialTheme.typography.titleMedium)
+                        Text(formatDateForDisplay(latestPhoto.capturedOn), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    TextButton(onClick = {
+                        photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }) { Icon(Icons.Outlined.Add, null); Text("Add") }
+                }
+                StoredProgressPhoto(
+                    latestPhoto,
+                    Modifier.fillMaxWidth().height(320.dp).clip(RoundedCornerShape(12.dp)).clickable { selectedPhoto = latestPhoto },
+                    maxWidth = 1200,
+                    maxHeight = 1280,
+                )
+                latestPhoto.notes?.takeIf(String::isNotBlank)?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (progressPhotos.size >= 2) {
+                    Button(onClick = { comparePhotos = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Compare first and latest")
+                    }
+                } else {
+                    Text("Add another photo later to unlock comparison.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text("TIMELINE", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    progressPhotos.forEach { photo ->
+                        ProgressPhotoCard(photo) { selectedPhoto = photo }
                     }
                 }
             }
@@ -824,6 +950,34 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
         viewModel.addMeasurement(it)
         showAdd = false
     }
+    if (photosUnlocked) {
+        pendingPhotoPath?.let { path ->
+            ProgressPhotoDetailsDialog(
+                path = path,
+                onDismiss = {
+                    File(path).delete()
+                    pendingPhotoPath = null
+                },
+            ) { date, notes ->
+                viewModel.addProgressPhoto(ProgressPhotoEntity(capturedOn = date, uri = path, notes = notes))
+                pendingPhotoPath = null
+            }
+        }
+        selectedPhoto?.let { photo ->
+            ProgressPhotoViewer(
+                photo = photo,
+                onDismiss = { selectedPhoto = null },
+                onDelete = {
+                    viewModel.deleteProgressPhoto(photo)
+                    File(photo.uri).delete()
+                    selectedPhoto = null
+                },
+            )
+        }
+        if (comparePhotos && progressPhotos.size >= 2) {
+            ProgressPhotoComparison(progressPhotos.last(), progressPhotos.first()) { comparePhotos = false }
+        }
+    }
     pendingMeasurement?.let { value -> ConfirmDeleteDialog("Delete measurement?", "This reading will be removed from trends.", { pendingMeasurement = null }) { viewModel.deleteMeasurement(value); pendingMeasurement = null } }
 }
 
@@ -848,16 +1002,21 @@ private fun importProgressPhoto(context: Context, source: android.net.Uri): Stri
 }
 
 @Composable
-private fun ProgressPhotoCard(photo: ProgressPhotoEntity, onDelete: () -> Unit) {
+private fun StoredProgressPhoto(
+    photo: ProgressPhotoEntity,
+    modifier: Modifier,
+    maxWidth: Int = 768,
+    maxHeight: Int = 984,
+) {
     var bitmap by remember(photo.uri) { mutableStateOf<ImageBitmap?>(null) }
     var loaded by remember(photo.uri) { mutableStateOf(false) }
     LaunchedEffect(photo.uri) {
         bitmap = withContext(Dispatchers.IO) {
-            decodeSampledBitmap(photo.uri, 768, 984)?.asImageBitmap()
+            decodeSampledBitmap(photo.uri, maxWidth, maxHeight)?.asImageBitmap()
         }
         loaded = true
     }
-    Box(Modifier.width(128.dp).height(164.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+    Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
         bitmap?.let { Image(it, "Progress photo ${photo.capturedOn}", Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
         if (loaded && bitmap == null) {
             Text(
@@ -867,10 +1026,119 @@ private fun ProgressPhotoCard(photo: ProgressPhotoEntity, onDelete: () -> Unit) 
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        IconButton(onClick = onDelete, modifier = Modifier.align(Alignment.TopEnd)) {
-            Icon(Icons.Outlined.Delete, "Delete photo", tint = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable
+private fun ProgressPhotoCard(photo: ProgressPhotoEntity, onClick: () -> Unit) {
+    Column(Modifier.width(112.dp).clickable(onClick = onClick), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        StoredProgressPhoto(photo, Modifier.fillMaxWidth().height(142.dp).clip(RoundedCornerShape(8.dp)))
+        Text(formatDateShort(photo.capturedOn), fontSize = 11.sp)
+        photo.notes?.takeIf(String::isNotBlank)?.let {
+            Text(it.substringBefore(" · "), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
-        Text(formatDateForDisplay(photo.capturedOn), Modifier.align(Alignment.BottomStart).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)).padding(6.dp), fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun ProgressPhotoDetailsDialog(
+    path: String,
+    onDismiss: () -> Unit,
+    onSave: (String, String?) -> Unit,
+) {
+    var date by remember { mutableStateOf(today()) }
+    var pose by remember { mutableStateOf("Front") }
+    var note by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add progress photo") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                StoredProgressPhoto(
+                    ProgressPhotoEntity(capturedOn = date, uri = path),
+                    Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(10.dp)),
+                )
+                DateField(date) { date = it }
+                Text("Pose", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    listOf("Front", "Side", "Back", "Other").forEach { option ->
+                        FilterChip(selected = pose == option, onClick = { pose = option }, label = { Text(option) })
+                    }
+                }
+                AppField(note, { note = it }, "Optional note")
+                Text("Tip: keep pose, distance, and lighting consistent.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onSave(date, listOf(pose, note.trim()).filter(String::isNotBlank).joinToString(" · ").ifBlank { null })
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun ProgressPhotoViewer(photo: ProgressPhotoEntity, onDismiss: () -> Unit, onDelete: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxWidth().fillMaxHeight(), color = MaterialTheme.colorScheme.background) {
+            Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(formatDateForDisplay(photo.capturedOn), style = MaterialTheme.typography.titleMedium)
+                        photo.notes?.takeIf(String::isNotBlank)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                    TextButton(onClick = onDismiss) { Text("Close") }
+                }
+                StoredProgressPhoto(
+                    photo,
+                    Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(12.dp)),
+                    maxWidth = 1600,
+                    maxHeight = 2200,
+                )
+                TextButton(onClick = onDelete, modifier = Modifier.align(Alignment.End)) {
+                    Icon(Icons.Outlined.Delete, null)
+                    Text("Delete photo")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProgressPhotoComparison(first: ProgressPhotoEntity, latest: ProgressPhotoEntity, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxWidth().fillMaxHeight(), color = MaterialTheme.colorScheme.background) {
+            Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Progress comparison", style = MaterialTheme.typography.headlineMedium)
+                        Text("First and latest", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    TextButton(onClick = onDismiss) { Text("Close") }
+                }
+                Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ComparisonPhoto("FIRST", first, Modifier.weight(1f))
+                    ComparisonPhoto("LATEST", latest, Modifier.weight(1f))
+                }
+                Text("Best compared with matching pose, distance, and lighting.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComparisonPhoto(label: String, photo: ProgressPhotoEntity, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text(label, fontSize = 10.sp, letterSpacing = 1.3.sp, color = Clay)
+        StoredProgressPhoto(
+            photo,
+            Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(10.dp)),
+            maxWidth = 900,
+            maxHeight = 1600,
+        )
+        Text(formatDateShort(photo.capturedOn), fontSize = 12.sp)
+        photo.notes?.takeIf(String::isNotBlank)?.let { Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2) }
     }
 }
 

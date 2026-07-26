@@ -51,6 +51,9 @@ permission or delete records there at any time.
 ## Photos, exports, and backups
 
 Selected progress photos are copied into the app's private local storage.
+The progress-photo screen requires your device credential or biometric,
+automatically relocks when the app leaves the foreground, and blocks Android
+screenshots while unlocked.
 When you create an export or database backup, you choose its destination using
 Android's system file picker. Files you share, copy, or store outside Jimvro
 are controlled by you and by the destination provider. Current database

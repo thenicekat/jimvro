@@ -7,6 +7,7 @@ Native, local-first gym diary built with Kotlin and Jetpack Compose.
 - Today dashboard for training, nutrition, and latest weigh-in
 - Workout logging with exercises, sets, reps, weight, RPE, and volume
 - Body measurements with history
+- Device-locked progress-photo timeline and comparison
 - Manual food and macro logging
 - On-device barcode scanning with Open Food Facts product lookup
 - Room/SQLite storage with no account, server, or AI dependency
