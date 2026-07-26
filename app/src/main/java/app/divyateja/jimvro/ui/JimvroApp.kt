@@ -3,10 +3,14 @@ package app.divyateja.jimvro.ui
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.ComponentActivity
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.content.res.Configuration
 import android.content.Context
 import android.os.Build
+import android.webkit.MimeTypeMap
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.background
@@ -83,6 +87,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -92,6 +97,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.drawBehind
@@ -143,6 +149,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -683,18 +690,20 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
     var showAdd by remember { mutableStateOf(false) }
     var selectedTrend by remember { mutableStateOf("Weight") }
     var pendingMeasurement by remember { mutableStateOf<MeasurementEntity?>(null) }
+    var photoError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         scope.launch {
-            val stored = withContext(Dispatchers.IO) {
-                val directory = File(context.filesDir, "progress_photos").apply { mkdirs() }
-                val file = File(directory, "${System.currentTimeMillis()}.jpg")
-                context.contentResolver.openInputStream(uri)?.use { input -> file.outputStream().use(input::copyTo) }
-                file.takeIf(File::exists)?.absolutePath
+            runCatching {
+                withContext(Dispatchers.IO) { importProgressPhoto(context, uri) }
+            }.onSuccess { path ->
+                viewModel.addProgressPhoto(ProgressPhotoEntity(capturedOn = today(), uri = path))
+                photoError = null
+            }.onFailure { error ->
+                photoError = error.message ?: "Could not import photo"
             }
-            stored?.let { viewModel.addProgressPhoto(ProgressPhotoEntity(capturedOn = today(), uri = it)) }
         }
     }
     Page(
@@ -705,20 +714,19 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Progress photos", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            TextButton(onClick = { photoPicker.launch("image/*") }) { Icon(Icons.Outlined.Add, null); Text("Photo") }
+            TextButton(onClick = {
+                photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }) { Icon(Icons.Outlined.Add, null); Text("Photo") }
         }
+        photoError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         if (progressPhotos.isEmpty()) {
             Text("Private photos stay on this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 progressPhotos.forEach { photo ->
-                    val bitmap = remember(photo.uri) { android.graphics.BitmapFactory.decodeFile(photo.uri)?.asImageBitmap() }
-                    Box(Modifier.width(128.dp).height(164.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
-                        bitmap?.let { Image(it, "Progress photo ${photo.capturedOn}", Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-                        IconButton(onClick = { viewModel.deleteProgressPhoto(photo); File(photo.uri).delete() }, modifier = Modifier.align(Alignment.TopEnd)) {
-                            Icon(Icons.Outlined.Delete, "Delete photo", tint = MaterialTheme.colorScheme.onSurface)
-                        }
-                        Text(formatDateForDisplay(photo.capturedOn), Modifier.align(Alignment.BottomStart).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)).padding(6.dp), fontSize = 10.sp)
+                    ProgressPhotoCard(photo) {
+                        viewModel.deleteProgressPhoto(photo)
+                        File(photo.uri).delete()
                     }
                 }
             }
@@ -817,6 +825,67 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
         showAdd = false
     }
     pendingMeasurement?.let { value -> ConfirmDeleteDialog("Delete measurement?", "This reading will be removed from trends.", { pendingMeasurement = null }) { viewModel.deleteMeasurement(value); pendingMeasurement = null } }
+}
+
+private fun importProgressPhoto(context: Context, source: android.net.Uri): String {
+    val directory = File(context.filesDir, "progress_photos")
+    check(directory.exists() || directory.mkdirs()) { "Could not create photo storage" }
+    val extension = context.contentResolver.getType(source)
+        ?.let(MimeTypeMap.getSingleton()::getExtensionFromMimeType)
+        ?.takeIf(String::isNotBlank)
+        ?: "img"
+    val destination = File(directory, "${UUID.randomUUID()}.$extension")
+    try {
+        val input = requireNotNull(context.contentResolver.openInputStream(source)) { "Could not open selected photo" }
+        input.use { sourceStream -> destination.outputStream().use(sourceStream::copyTo) }
+        check(destination.length() > 0) { "Selected photo was empty" }
+        check(decodeSampledBitmap(destination.absolutePath, 32, 32) != null) { "Selected file is not a supported image" }
+        return destination.absolutePath
+    } catch (error: Throwable) {
+        destination.delete()
+        throw error
+    }
+}
+
+@Composable
+private fun ProgressPhotoCard(photo: ProgressPhotoEntity, onDelete: () -> Unit) {
+    var bitmap by remember(photo.uri) { mutableStateOf<ImageBitmap?>(null) }
+    var loaded by remember(photo.uri) { mutableStateOf(false) }
+    LaunchedEffect(photo.uri) {
+        bitmap = withContext(Dispatchers.IO) {
+            decodeSampledBitmap(photo.uri, 768, 984)?.asImageBitmap()
+        }
+        loaded = true
+    }
+    Box(Modifier.width(128.dp).height(164.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+        bitmap?.let { Image(it, "Progress photo ${photo.capturedOn}", Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+        if (loaded && bitmap == null) {
+            Text(
+                "Photo unavailable",
+                Modifier.align(Alignment.Center).padding(12.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconButton(onClick = onDelete, modifier = Modifier.align(Alignment.TopEnd)) {
+            Icon(Icons.Outlined.Delete, "Delete photo", tint = MaterialTheme.colorScheme.onSurface)
+        }
+        Text(formatDateForDisplay(photo.capturedOn), Modifier.align(Alignment.BottomStart).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)).padding(6.dp), fontSize = 10.sp)
+    }
+}
+
+private fun decodeSampledBitmap(path: String, maxWidth: Int, maxHeight: Int): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(path, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sampleSize = 1
+    while (bounds.outWidth / sampleSize > maxWidth * 2 || bounds.outHeight / sampleSize > maxHeight * 2) {
+        sampleSize *= 2
+    }
+    return BitmapFactory.decodeFile(path, BitmapFactory.Options().apply {
+        inSampleSize = sampleSize
+        inPreferredConfig = Bitmap.Config.RGB_565
+    })
 }
 
 private fun bodyTrendPoints(measurements: List<MeasurementEntity>, metric: String, settings: AppSettings): List<ChartPoint> =
