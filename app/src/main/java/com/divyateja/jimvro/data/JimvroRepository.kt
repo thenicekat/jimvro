@@ -50,6 +50,8 @@ class JimvroRepository(private val database: JimvroDatabase) {
     suspend fun finishWorkout(workoutId: Long) = database.workoutDao().finishWorkout(workoutId, System.currentTimeMillis())
     suspend fun updateWorkoutDuration(workoutId: Long, createdAt: Long, durationSeconds: Long) =
         database.workoutDao().updateFinishedAt(workoutId, createdAt + durationSeconds * 1_000)
+    suspend fun isWeightPersonalRecord(exerciseId: Long, setId: Long, weightKg: Double): Boolean =
+        database.workoutDao().maxPriorWorkingWeight(exerciseId, setId)?.let { weightKg > it } ?: true
     suspend fun setSuperset(workoutId: Long, exerciseIds: List<Long>, groupId: Int?) = database.workoutDao().setSuperset(workoutId, exerciseIds, groupId)
     suspend fun toggleFavorite(exerciseId: Long) = database.exerciseDao().toggleFavorite(exerciseId)
     suspend fun deleteSet(setId: Long) = database.workoutDao().deleteSet(setId)
@@ -66,7 +68,17 @@ class JimvroRepository(private val database: JimvroDatabase) {
     suspend fun startFromTemplate(templateId: Long, date: String): Long {
         val template = database.templateDao().template(templateId) ?: error("Template not found")
         val stubs = database.templateDao().lines(templateId).flatMap { line ->
-            (1..line.targetSets).map { number -> WorkoutSetEntity(workoutId = 0, exerciseId = line.exerciseId, setNumber = number, setType = line.setType, supersetGroup = line.supersetGroup) }
+            (1..line.targetSets).map { number ->
+                WorkoutSetEntity(
+                    workoutId = 0,
+                    exerciseId = line.exerciseId,
+                    setNumber = number,
+                    setType = line.setType,
+                    supersetGroup = line.supersetGroup,
+                    targetRepLow = line.repLow,
+                    targetRepHigh = line.repHigh,
+                )
+            }
         }
         return database.workoutDao().createWorkout(WorkoutEntity(performedOn = date, name = template.name), stubs)
     }
@@ -167,7 +179,7 @@ class JimvroRepository(private val database: JimvroDatabase) {
                 check(cursor.moveToFirst())
                 cursor.getInt(0)
             }
-            require(version in 1..4) { "Unsupported backup version: $version" }
+            require(version in 1..5) { "Unsupported backup version: $version" }
             val required = setOf("measurements", "workouts", "workout_sets", "food_entries")
             val present = db.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null).use { cursor ->
                 buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) }

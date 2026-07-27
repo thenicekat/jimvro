@@ -76,6 +76,7 @@ import com.divyateja.jimvro.AppViewModel
 import com.divyateja.jimvro.data.ExerciseEntity
 import com.divyateja.jimvro.data.PreviousSet
 import com.divyateja.jimvro.data.WorkoutSetDetail
+import com.divyateja.jimvro.domain.progressionSuggestion
 import com.divyateja.jimvro.ui.theme.Clay
 import com.divyateja.jimvro.ui.theme.ClayMuted
 import kotlinx.coroutines.delay
@@ -95,6 +96,8 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
     var pendingSetDelete by remember { mutableStateOf<Long?>(null) }
     var restRemaining by remember { mutableIntStateOf(0) }
     var restActive by remember { mutableStateOf(false) }
+    var prMessage by remember { mutableStateOf<String?>(null) }
+    var announcedPrSets by remember { mutableStateOf(emptySet<Long>()) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val context = LocalContext.current
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -111,6 +114,12 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
     }
     LaunchedEffect(workout?.finishedAt) {
         while (workout?.finishedAt == null) { now = System.currentTimeMillis(); delay(1_000) }
+    }
+    LaunchedEffect(prMessage) {
+        if (prMessage != null) {
+            delay(4_000)
+            prMessage = null
+        }
     }
 
     val totalVolume = sets.sumOf { (it.reps ?: 0) * (it.weightKg ?: 0.0) }
@@ -173,6 +182,19 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
             }
         }
 
+        prMessage?.let { message ->
+            item {
+                Row(
+                    Modifier.fillMaxWidth().background(Clay.copy(alpha = 0.14f), RoundedCornerShape(10.dp)).padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("NEW PR", fontSize = 10.sp, letterSpacing = 1.2.sp, color = Clay)
+                    Spacer(Modifier.width(12.dp))
+                    Text(message, fontSize = 13.sp)
+                }
+            }
+        }
+
         if (groups.isEmpty()) {
             item {
                 EmptyWorkoutCard { showAddExercise = true }
@@ -195,6 +217,8 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                     viewModel = viewModel,
                     workoutId = workoutId,
                     exerciseId = current.first().exerciseId,
+                    targetRepLow = current.first().targetRepLow,
+                    targetRepHigh = current.first().targetRepHigh,
                 )
             }
             current.forEachIndexed { rowIndex, set ->
@@ -206,9 +230,20 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                         readOnly = !canEdit,
                         onUpdate = { reps, weight -> viewModel.updateSet(set.id, reps, weight, set.rpe) },
                         onSetType = { viewModel.updateSetType(set.id, it) },
-                        onComplete = {
+                        onComplete = { reps, weightKg ->
                             restRemaining = settings.restSeconds
                             restActive = true
+                            if (
+                                set.setType == "working" && reps != null && weightKg != null &&
+                                set.id !in announcedPrSets
+                            ) {
+                                scope.launch {
+                                    if (viewModel.isWeightPersonalRecord(set.exerciseId, set.id, weightKg)) {
+                                        announcedPrSets = announcedPrSets + set.id
+                                        prMessage = "${set.exerciseName} · ${weightKg.prettyTracker()} kg × $reps"
+                                    }
+                                }
+                            }
                             if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                         },
                         onDelete = { pendingSetDelete = set.id },
@@ -380,10 +415,13 @@ private fun PreviousPerformance(
     viewModel: AppViewModel,
     workoutId: Long,
     exerciseId: Long,
+    targetRepLow: Int?,
+    targetRepHigh: Int?,
 ) {
     val previous by viewModel.previousSets(workoutId, exerciseId)
         .collectAsStateWithLifecycle(initialValue = emptyList())
     if (previous.isEmpty()) return
+    val suggestion = progressionSuggestion(previous, targetRepLow, targetRepHigh)
 
     Column(
         Modifier
@@ -401,6 +439,14 @@ private fun PreviousPerformance(
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        suggestion?.let {
+            Text(
+                if (it.increase) "Next: ${it.weightKg.prettyTracker()} kg · top of range reached"
+                else "Next: ${it.weightKg.prettyTracker()} kg · build toward ${targetRepHigh} reps",
+                fontSize = 12.sp,
+                color = Clay,
+            )
+        }
     }
 }
 
@@ -419,7 +465,7 @@ private fun TrackerSetRow(
     readOnly: Boolean,
     onUpdate: (Int?, Double?) -> Unit,
     onSetType: (String) -> Unit,
-    onComplete: () -> Unit,
+    onComplete: (Int?, Double?) -> Unit,
     onDelete: () -> Unit,
 ) {
     var reps by remember(set.id, set.reps) { mutableStateOf(set.reps?.toString().orEmpty()) }
@@ -451,11 +497,15 @@ private fun TrackerSetRow(
                         },
                         modifier = Modifier.width(56.dp), contentPadding = PaddingValues(horizontal = 0.dp),
                     ) { Text(typeLabel, fontSize = 10.sp, color = Clay) }
-                    TrackerNumberField(reps, "Reps", Modifier.weight(1f), onComplete) { value ->
+                    TrackerNumberField(reps, "Reps", Modifier.weight(1f), {
+                        onComplete(reps.toIntOrNull(), weight.toDoubleOrNull()?.storageWeight(settings))
+                    }) { value ->
                         reps = value
                         onUpdate(value.toIntOrNull(), weight.toDoubleOrNull()?.storageWeight(settings))
                     }
-                    TrackerNumberField(weight, "Weight", Modifier.weight(1f), onComplete) { value ->
+                    TrackerNumberField(weight, "Weight", Modifier.weight(1f), {
+                        onComplete(reps.toIntOrNull(), weight.toDoubleOrNull()?.storageWeight(settings))
+                    }) { value ->
                         weight = value
                         onUpdate(reps.toIntOrNull(), value.toDoubleOrNull()?.storageWeight(settings))
                     }

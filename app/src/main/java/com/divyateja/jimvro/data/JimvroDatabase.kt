@@ -87,6 +87,8 @@ data class WorkoutSetEntity(
     val rpe: Double? = null,
     val setType: String = "working",
     val supersetGroup: Int? = null,
+    val targetRepLow: Int? = null,
+    val targetRepHigh: Int? = null,
 )
 
 @Entity(tableName = "saved_foods", indices = [Index("name")])
@@ -184,6 +186,8 @@ data class WorkoutSetDetail(
     val rpe: Double?,
     val setType: String,
     val supersetGroup: Int?,
+    val targetRepLow: Int?,
+    val targetRepHigh: Int?,
 )
 
 data class PreviousSet(
@@ -271,7 +275,8 @@ interface WorkoutDao {
 
     @Query(
         """SELECT s.id, s.workoutId, s.exerciseId, e.name AS exerciseName,
-            e.muscleGroup, s.setNumber, s.reps, s.weightKg, s.rpe, s.setType, s.supersetGroup
+            e.muscleGroup, s.setNumber, s.reps, s.weightKg, s.rpe, s.setType, s.supersetGroup,
+            s.targetRepLow, s.targetRepHigh
             FROM workout_sets s INNER JOIN exercises e ON e.id = s.exerciseId
             WHERE s.workoutId = :workoutId ORDER BY s.id""",
     )
@@ -321,6 +326,9 @@ interface WorkoutDao {
     suspend fun setSuperset(workoutId: Long, exerciseIds: List<Long>, groupId: Int?)
     @Query("UPDATE workouts SET finishedAt = :finishedAt WHERE id = :workoutId") suspend fun finishWorkout(workoutId: Long, finishedAt: Long)
     @Query("UPDATE workouts SET finishedAt = :finishedAt WHERE id = :workoutId") suspend fun updateFinishedAt(workoutId: Long, finishedAt: Long)
+
+    @Query("SELECT MAX(weightKg) FROM workout_sets WHERE exerciseId = :exerciseId AND id != :setId AND setType = 'working'")
+    suspend fun maxPriorWorkingWeight(exerciseId: Long, setId: Long): Double?
 
     @Query("DELETE FROM workout_sets WHERE id = :setId")
     suspend fun deleteSet(setId: Long)
@@ -482,7 +490,7 @@ interface FoodDao {
         BarcodeProductEntity::class,
         ProgressPhotoEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class JimvroDatabase : RoomDatabase() {
@@ -496,7 +504,7 @@ abstract class JimvroDatabase : RoomDatabase() {
     companion object {
         fun create(context: Context): JimvroDatabase =
             Room.databaseBuilder(context, JimvroDatabase::class.java, "jimvro.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -529,6 +537,12 @@ abstract class JimvroDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE template_exercises ADD COLUMN supersetGroup INTEGER")
                 db.execSQL("CREATE TABLE IF NOT EXISTS progress_photos (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, capturedOn TEXT NOT NULL, uri TEXT NOT NULL, notes TEXT, createdAt INTEGER NOT NULL)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_progress_photos_capturedOn ON progress_photos(capturedOn)")
+            }
+        }
+        internal val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE workout_sets ADD COLUMN targetRepLow INTEGER")
+                db.execSQL("ALTER TABLE workout_sets ADD COLUMN targetRepHigh INTEGER")
             }
         }
     }

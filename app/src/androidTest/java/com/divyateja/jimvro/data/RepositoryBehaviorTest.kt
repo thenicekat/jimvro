@@ -6,7 +6,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -62,6 +64,8 @@ class RepositoryBehaviorTest {
         assertEquals(listOf(1, 2, 3), sets.filter { it.exerciseId == press.id }.map { it.setNumber })
         assertEquals(listOf("warmup", "warmup"), sets.filter { it.exerciseId == row.id }.map { it.setType })
         assertEquals(setOf(4), sets.mapNotNull { it.supersetGroup }.toSet())
+        assertEquals(setOf(5), sets.filter { it.exerciseId == press.id }.mapNotNull { it.targetRepLow }.toSet())
+        assertEquals(setOf(12), sets.filter { it.exerciseId == row.id }.mapNotNull { it.targetRepHigh }.toSet())
     }
 
     @Test
@@ -115,6 +119,22 @@ class RepositoryBehaviorTest {
         assertEquals(olderId, repository.workouts.first().first { it.performedOn == "2026-07-18" }.id)
         assertEquals(listOf("2026-07-18"), previous.map { it.performedOn }.distinct())
         assertEquals(50.0, previous.single().weightKg!!, 0.001)
+    }
+
+    @Test
+    fun personalRecordRequiresBeatingPriorWorkingWeight() = withRepository { repository ->
+        val exercise = repository.findOrCreateExercise("PR lift")
+        val workoutId = repository.createWorkout(
+            WorkoutEntity(performedOn = "2026-07-27"),
+            listOf(
+                WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, setNumber = 1, reps = 8, weightKg = 60.0),
+                WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, setNumber = 2, reps = 6, weightKg = 62.5),
+            ),
+        )
+        val sets = repository.workoutSets(workoutId).first()
+
+        assertFalse(repository.isWeightPersonalRecord(exercise.id, sets[1].id, 60.0))
+        assertTrue(repository.isWeightPersonalRecord(exercise.id, sets[1].id, 62.5))
     }
 
     private fun withRepository(block: suspend (JimvroRepository) -> Unit) = runBlocking {

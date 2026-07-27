@@ -52,6 +52,8 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     fun finishWorkout(workoutId: Long) = viewModelScope.launch { repository.finishWorkout(workoutId) }
     fun updateWorkoutDuration(workoutId: Long, createdAt: Long, durationSeconds: Long) =
         viewModelScope.launch { repository.updateWorkoutDuration(workoutId, createdAt, durationSeconds) }
+    suspend fun isWeightPersonalRecord(exerciseId: Long, setId: Long, weightKg: Double): Boolean =
+        repository.isWeightPersonalRecord(exerciseId, setId, weightKg)
     fun setSuperset(workoutId: Long, exerciseIds: List<Long>, groupId: Int?) = viewModelScope.launch { repository.setSuperset(workoutId, exerciseIds, groupId) }
     fun toggleFavorite(exerciseId: Long) = viewModelScope.launch { repository.toggleFavorite(exerciseId) }
     suspend fun findOrCreateExercise(name: String) = repository.findOrCreateExercise(name)

@@ -36,4 +36,29 @@ class MigrationTest {
         db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='progress_photos'").use { assertTrue(it.moveToFirst()) }
         migrated.close()
     }
+
+    @Test fun migration4To5AddsWorkoutRepTargets() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "migration-4-5-test"
+        context.deleteDatabase(name)
+        val factory = FrameworkSQLiteOpenHelperFactory()
+        factory.create(SupportSQLiteOpenHelper.Configuration.builder(context).name(name).callback(object : SupportSQLiteOpenHelper.Callback(4) {
+            override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE workout_sets (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, workoutId INTEGER NOT NULL, exerciseId INTEGER NOT NULL, setNumber INTEGER NOT NULL, reps INTEGER, weightKg REAL, rpe REAL, setType TEXT NOT NULL, supersetGroup INTEGER)")
+            }
+            override fun onUpgrade(db: androidx.sqlite.db.SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+        }).build()).writableDatabase.close()
+        val migrated = factory.create(SupportSQLiteOpenHelper.Configuration.builder(context).name(name).callback(object : SupportSQLiteOpenHelper.Callback(5) {
+            override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) = Unit
+            override fun onUpgrade(db: androidx.sqlite.db.SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = JimvroDatabase.MIGRATION_4_5.migrate(db)
+        }).build())
+
+        val columns = mutableSetOf<String>()
+        migrated.writableDatabase.query("PRAGMA table_info(workout_sets)").use { cursor ->
+            while (cursor.moveToNext()) columns += cursor.getString(cursor.getColumnIndexOrThrow("name"))
+        }
+        assertTrue(columns.containsAll(listOf("targetRepLow", "targetRepHigh")))
+        migrated.close()
+        context.deleteDatabase(name)
+    }
 }

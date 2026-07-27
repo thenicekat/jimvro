@@ -198,7 +198,7 @@ fun JimvroApp(
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route ?: Destination.Today.route
-    val isStandaloneScreen = currentRoute.startsWith("workout/") || currentRoute == "settings"
+    val isStandaloneScreen = currentRoute.startsWith("workout/") || currentRoute in setOf("settings", "calendar")
     val current = Destination.entries.firstOrNull { it.route == currentRoute }
         ?: if (currentRoute.startsWith("workout/") || currentRoute.startsWith("exercise/") || currentRoute == "templates" || currentRoute == "records") Destination.Workouts else Destination.Today
     val navigateRoot: (String) -> Unit = { route ->
@@ -340,6 +340,14 @@ fun JimvroApp(
                     onOpenWorkout = { id -> navController.navigate("workout/$id") },
                     onTemplates = { navController.navigate("templates") },
                     onRecords = { navController.navigate("records") },
+                    onCalendar = { navController.navigate("calendar") },
+                )
+            }
+            composable("calendar") {
+                WorkoutCalendarScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                    onOpenWorkout = { id -> navController.navigate("workout/$id") },
                 )
             }
             composable("templates") {
@@ -639,6 +647,7 @@ private fun WorkoutsScreen(
     onOpenWorkout: (Long) -> Unit,
     onTemplates: () -> Unit,
     onRecords: () -> Unit,
+    onCalendar: () -> Unit,
 ) {
     val workouts by viewModel.workouts.collectAsStateWithLifecycle()
     var showAdd by remember { mutableStateOf(false) }
@@ -654,6 +663,8 @@ private fun WorkoutsScreen(
                 WorkoutMenuRow("Templates", "Reusable training plans", onTemplates)
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
                 WorkoutMenuRow("Personal records", "Best weight by exercise", onRecords)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
+                WorkoutMenuRow("Calendar", "Monthly training history", onCalendar)
             }
             Text("RECENT SESSIONS", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (workouts.isEmpty()) EmptyState("No workouts yet", "Log your first training session.")
