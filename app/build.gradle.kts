@@ -13,8 +13,8 @@ android {
         applicationId = "com.divyateja.jimvro"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -53,6 +53,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
     implementation("androidx.navigation:navigation-compose:2.9.5")
+    implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("androidx.health.connect:connect-client:1.1.0")
     implementation("androidx.biometric:biometric:1.1.0")
 

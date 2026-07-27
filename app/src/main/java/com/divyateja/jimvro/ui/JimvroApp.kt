@@ -715,6 +715,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
     var photoRevision by remember { mutableStateOf(0) }
     var photosUnlocked by remember { mutableStateOf(false) }
     var photoAuthError by remember { mutableStateOf<String?>(null) }
+    val photoPickerInFlight = remember { mutableStateOf(false) }
     val context = LocalContext.current
     val activity = LocalActivity.current as? FragmentActivity
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -760,7 +761,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
     }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
+            if (shouldRelockPhotos(event, photoPickerInFlight.value)) {
                 photosUnlocked = false
                 selectedPhoto = null
                 comparePhotos = false
@@ -776,6 +777,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
         }
     }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        photoPickerInFlight.value = false
         uri ?: return@rememberLauncherForActivityResult
         scope.launch {
             runCatching {
@@ -783,11 +785,21 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
             }.onSuccess { path ->
                 pendingPhotoPath = path
                 photoError = null
-                unlockPhotos()
             }.onFailure { error ->
                 photoError = error.message ?: "Could not import photo"
             }
         }
+    }
+    val launchPhotoPicker = {
+        photoError = null
+        photoPickerInFlight.value = true
+        runCatching {
+            photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        }.onFailure { error ->
+            photoPickerInFlight.value = false
+            photoError = error.message ?: "Photo picker is unavailable"
+        }
+        Unit
     }
     Page(
         "Measurements",
@@ -824,9 +836,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Button(onClick = {
-                        photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    }) { Icon(Icons.Outlined.Add, null); Text("Add first photo") }
+                    Button(onClick = launchPhotoPicker) { Icon(Icons.Outlined.Add, null); Text("Add first photo") }
                 }
             } else {
                 val latestPhoto = progressPhotos.first()
@@ -835,9 +845,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
                         Text("Latest", style = MaterialTheme.typography.titleMedium)
                         Text(formatDateForDisplay(latestPhoto.capturedOn), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    TextButton(onClick = {
-                        photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    }) { Icon(Icons.Outlined.Add, null); Text("Add") }
+                    TextButton(onClick = launchPhotoPicker) { Icon(Icons.Outlined.Add, null); Text("Add") }
                 }
                 StoredProgressPhoto(
                     latestPhoto,
@@ -988,6 +996,9 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
     }
     pendingMeasurement?.let { value -> ConfirmDeleteDialog("Delete measurement?", "This reading will be removed from trends.", { pendingMeasurement = null }) { viewModel.deleteMeasurement(value); pendingMeasurement = null } }
 }
+
+internal fun shouldRelockPhotos(event: Lifecycle.Event, photoPickerInFlight: Boolean): Boolean =
+    event == Lifecycle.Event.ON_STOP && !photoPickerInFlight
 
 private fun importProgressPhoto(context: Context, source: android.net.Uri): String {
     val directory = File(context.filesDir, "progress_photos")
