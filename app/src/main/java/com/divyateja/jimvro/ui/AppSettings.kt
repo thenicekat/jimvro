@@ -6,6 +6,10 @@ data class AppSettings(
     val calorieTarget: Int = 2_000,
     val proteinTarget: Int = 150,
     val restSeconds: Int = 90,
+    val proteinRemindersEnabled: Boolean = true,
+    val breakfastReminderMinutes: Int = 8 * 60,
+    val lunchReminderMinutes: Int = 13 * 60,
+    val dinnerReminderMinutes: Int = 20 * 60,
 )
 
 internal fun Double.displayWeight(settings: AppSettings): Double =

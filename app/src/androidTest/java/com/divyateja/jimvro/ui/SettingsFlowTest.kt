@@ -16,5 +16,9 @@ class SettingsFlowTest {
         rule.onNodeWithContentDescription("Settings").performClick()
         rule.onNodeWithText("Goals & units").performClick()
         rule.onNodeWithText("Save settings").assertIsDisplayed()
+        rule.onNodeWithText("Meal-time reminders").assertIsDisplayed()
+        rule.onNodeWithText("Breakfast").assertIsDisplayed()
+        rule.onNodeWithText("Lunch").assertIsDisplayed()
+        rule.onNodeWithText("Dinner").assertIsDisplayed()
     }
 }

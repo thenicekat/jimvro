@@ -1,5 +1,6 @@
 package com.divyateja.jimvro.ui
 
+import android.Manifest
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -10,6 +11,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.content.res.Configuration
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.webkit.MimeTypeMap
 import android.view.WindowManager
@@ -61,6 +63,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Scale
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -89,9 +92,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -213,6 +218,7 @@ fun JimvroApp(
     var restoreMessage by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val runHealthSync = {
         scope.launch {
             healthMessage = runCatching {
@@ -396,6 +402,12 @@ fun JimvroApp(
     }
     if (settingsOpen) SettingsSheet(settings, { settingsOpen = false }) {
         onSettingsChange(it)
+        if (
+            it.proteinRemindersEnabled && Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         settingsOpen = false
     }
     healthMessage?.let { message ->
@@ -1596,8 +1608,24 @@ private fun SettingsSheet(settings: AppSettings, onDismiss: () -> Unit, onSave: 
     var rest by remember(settings) { mutableStateOf(settings.restSeconds.toString()) }
     var weightUnit by remember(settings) { mutableStateOf(settings.weightUnit) }
     var lengthUnit by remember(settings) { mutableStateOf(settings.lengthUnit) }
+    var remindersEnabled by remember(settings) { mutableStateOf(settings.proteinRemindersEnabled) }
+    var breakfastMinutes by remember(settings) { mutableStateOf(settings.breakfastReminderMinutes) }
+    var lunchMinutes by remember(settings) { mutableStateOf(settings.lunchReminderMinutes) }
+    var dinnerMinutes by remember(settings) { mutableStateOf(settings.dinnerReminderMinutes) }
     FormSheet("Goals & units", "Used across nutrition, body measurements, and workouts.", "Save settings", true, {
-        onSave(AppSettings(weightUnit, lengthUnit, calories.toIntOrNull()?.coerceAtLeast(0) ?: 0, protein.toIntOrNull()?.coerceAtLeast(0) ?: 0, rest.toIntOrNull()?.coerceIn(15, 600) ?: 90))
+        onSave(
+            settings.copy(
+                weightUnit = weightUnit,
+                lengthUnit = lengthUnit,
+                calorieTarget = calories.toIntOrNull()?.coerceAtLeast(0) ?: 0,
+                proteinTarget = protein.toIntOrNull()?.coerceAtLeast(0) ?: 0,
+                restSeconds = rest.toIntOrNull()?.coerceIn(15, 600) ?: 90,
+                proteinRemindersEnabled = remindersEnabled,
+                breakfastReminderMinutes = breakfastMinutes,
+                lunchReminderMinutes = lunchMinutes,
+                dinnerReminderMinutes = dinnerMinutes,
+            ),
+        )
     }, onDismiss) {
         Text("UNITS", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1614,6 +1642,59 @@ private fun SettingsSheet(settings: AppSettings, onDismiss: () -> Unit, onSave: 
             AppField(protein, { protein = it.filter(Char::isDigit) }, "Protein (g)", Modifier.weight(1f))
         }
         AppField(rest, { rest = it.filter(Char::isDigit) }, "Rest timer (seconds)")
+        Text("PROTEIN REMINDERS", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            Modifier.fillMaxWidth().clickable { remindersEnabled = !remindersEnabled }.padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("Meal-time reminders", fontSize = 15.sp)
+                Text("Show protein progress at breakfast, lunch, and dinner", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = remindersEnabled, onCheckedChange = { remindersEnabled = it })
+        }
+        if (remindersEnabled) {
+            ReminderTimeField("Breakfast", breakfastMinutes) { breakfastMinutes = it }
+            ReminderTimeField("Lunch", lunchMinutes) { lunchMinutes = it }
+            ReminderTimeField("Dinner", dinnerMinutes) { dinnerMinutes = it }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReminderTimeField(label: String, minutesFromMidnight: Int, onChange: (Int) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
+            .clickable { open = true }.padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${(minutesFromMidnight / 60).toString().padStart(2, '0')}:${(minutesFromMidnight % 60).toString().padStart(2, '0')}", fontSize = 16.sp)
+        }
+        Icon(Icons.Outlined.Schedule, "Choose $label reminder time", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    if (open) {
+        val state = rememberTimePickerState(
+            initialHour = minutesFromMidnight / 60,
+            initialMinute = minutesFromMidnight % 60,
+            is24Hour = true,
+        )
+        AlertDialog(
+            onDismissRequest = { open = false },
+            title = { Text("$label reminder") },
+            text = { TimePicker(state = state) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onChange(state.hour * 60 + state.minute)
+                    open = false
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } },
+        )
     }
 }
 

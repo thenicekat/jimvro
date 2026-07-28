@@ -20,6 +20,18 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         val repository = (application as JimvroApplication).repository
         val preferences = getSharedPreferences("jimvro_settings", MODE_PRIVATE)
+        val initialSettings = AppSettings(
+            weightUnit = preferences.getString("weight_unit", "kg") ?: "kg",
+            lengthUnit = preferences.getString("length_unit", "cm") ?: "cm",
+            calorieTarget = preferences.getInt("calorie_target", 2_000),
+            proteinTarget = preferences.getInt("protein_target", 150),
+            restSeconds = preferences.getInt("rest_seconds", 90),
+            proteinRemindersEnabled = preferences.getBoolean("protein_reminders_enabled", true),
+            breakfastReminderMinutes = preferences.getInt("breakfast_reminder_minutes", 8 * 60),
+            lunchReminderMinutes = preferences.getInt("lunch_reminder_minutes", 13 * 60),
+            dinnerReminderMinutes = preferences.getInt("dinner_reminder_minutes", 20 * 60),
+        )
+        ProteinReminderScheduler.sync(this, initialSettings)
         setContent {
             var themeMode by remember {
                 mutableStateOf(
@@ -27,17 +39,7 @@ class MainActivity : FragmentActivity() {
                         .getOrDefault(ThemeMode.SYSTEM),
                 )
             }
-            var appSettings by remember {
-                mutableStateOf(
-                    AppSettings(
-                        weightUnit = preferences.getString("weight_unit", "kg") ?: "kg",
-                        lengthUnit = preferences.getString("length_unit", "cm") ?: "cm",
-                        calorieTarget = preferences.getInt("calorie_target", 2_000),
-                        proteinTarget = preferences.getInt("protein_target", 150),
-                        restSeconds = preferences.getInt("rest_seconds", 90),
-                    ),
-                )
-            }
+            var appSettings by remember { mutableStateOf(initialSettings) }
             JimvroTheme(themeMode) {
                 val appViewModel: AppViewModel = viewModel(factory = AppViewModel.Factory(repository))
                 JimvroApp(appViewModel, themeMode, { mode ->
@@ -51,7 +53,12 @@ class MainActivity : FragmentActivity() {
                         .putInt("calorie_target", value.calorieTarget)
                         .putInt("protein_target", value.proteinTarget)
                         .putInt("rest_seconds", value.restSeconds)
+                        .putBoolean("protein_reminders_enabled", value.proteinRemindersEnabled)
+                        .putInt("breakfast_reminder_minutes", value.breakfastReminderMinutes)
+                        .putInt("lunch_reminder_minutes", value.lunchReminderMinutes)
+                        .putInt("dinner_reminder_minutes", value.dinnerReminderMinutes)
                         .apply()
+                    ProteinReminderScheduler.sync(this, value)
                 }
             }
         }
