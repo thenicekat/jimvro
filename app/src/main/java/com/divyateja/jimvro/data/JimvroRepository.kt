@@ -98,9 +98,10 @@ class JimvroRepository(private val database: JimvroDatabase) {
                 Triple("Bench Press (Smith/Barbell)", 4, 5..8), Triple("Iso-Lateral Row", 3, 6..8),
                 Triple("Overhead Press", 3, 8..10), Triple("Lat Pulldown", 3, 8..10),
                 Triple("Preacher Curl", 3, 8..10), Triple("Rope Pushdown", 3, 10..12),
+                Triple("Machine Lateral Raise", 3, 10..12),
             )),
             Stock("Lower A", "Tuesday · Strength", listOf(
-                Triple("Squat Machine", 4, 8..10), Triple("Romanian Deadlift", 3, 8..8),
+                Triple("Leg Press", 4, 8..10), Triple("Romanian Deadlift", 3, 8..8),
                 Triple("Assisted Pull-ups", 3, 8..10), Triple("Seated Leg Curl", 3, 10..12),
                 Triple("Seated Calf Raise", 3, 12..15), Triple("Hanging Leg Raise", 3, 12..15),
                 Triple("Cable Crunch", 3, 12..15),
@@ -108,7 +109,7 @@ class JimvroRepository(private val database: JimvroDatabase) {
             Stock("Upper B", "Thursday · Hypertrophy", listOf(
                 Triple("Incline Smith Press", 3, 8..10), Triple("Seated Cable Row (V-Grip)", 3, 10..12),
                 Triple("Lat Pulldown", 3, 10..12), Triple("Chest Fly (Machine/Cable)", 3, 12..15),
-                Triple("Machine/Cable Lateral Raise", 3, 12..15), Triple("Reverse Pec Deck / Rear Delt Fly", 3, 15..20),
+                Triple("Machine Lateral Raise", 3, 12..15), Triple("Rear Delt Fly", 3, 15..20),
                 Triple("Cross-Body Hammer Curl", 3, 10..12), Triple("Overhead Rope Triceps Extension", 3, 10..12),
             )),
             Stock("Lower B", "Friday · Hypertrophy", listOf(
@@ -116,11 +117,6 @@ class JimvroRepository(private val database: JimvroDatabase) {
                 Triple("Leg Curl", 3, 12..15), Triple("Leg Extension", 3, 12..15),
                 Triple("Seated Calf Raise", 3, 15..20), Triple("Decline Sit-ups", 3, 10..15),
                 Triple("Ab Wheel Rollouts", 3, 8..12),
-            )),
-            Stock("Upper C", "Saturday · Aesthetics", listOf(
-                Triple("Incline Dumbbell Press", 3, 8..10), Triple("Pull-ups / Lat Pulldown", 3, 8..10),
-                Triple("Cable/Machine Lateral Raise", 4, 12..15), Triple("Reverse Pec Deck", 3, 12..15),
-                Triple("Preacher Curl", 3, 10..12), Triple("Rope Pushdown (or Overhead Extension)", 3, 10..12),
             )),
         )
         stocks.forEachIndexed { index, stock ->
