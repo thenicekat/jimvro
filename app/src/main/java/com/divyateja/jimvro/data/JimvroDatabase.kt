@@ -238,6 +238,12 @@ data class TemplateTarget(
     val supersetGroup: Int? = null,
 )
 
+data class WeeklyMuscleSet(
+    val muscleGroup: String,
+    val setCount: Int,
+    val volumeKg: Double,
+)
+
 data class DailyNutrition(
     val calories: Double,
     val proteinG: Double,
@@ -288,9 +294,10 @@ interface WorkoutDao {
         WHERE s.exerciseId = :exerciseId AND s.workoutId = (
           SELECT s2.workoutId FROM workout_sets s2 INNER JOIN workouts w2 ON w2.id = s2.workoutId
           WHERE s2.exerciseId = :exerciseId AND s2.workoutId != :workoutId
+            AND (s2.reps IS NOT NULL OR s2.weightKg IS NOT NULL)
             AND w2.performedOn <= (SELECT performedOn FROM workouts WHERE id = :workoutId)
           ORDER BY w2.performedOn DESC, w2.id DESC LIMIT 1
-        ) ORDER BY s.setNumber""",
+        ) AND (s.reps IS NOT NULL OR s.weightKg IS NOT NULL) ORDER BY s.setNumber""",
     )
     fun observePreviousSets(workoutId: Long, exerciseId: Long): Flow<List<PreviousSet>>
 
@@ -335,6 +342,18 @@ interface WorkoutDao {
 
     @Query("SELECT COALESCE(MAX(setNumber), 0) FROM workout_sets WHERE workoutId = :workoutId AND exerciseId = :exerciseId")
     suspend fun maxSetNumber(workoutId: Long, exerciseId: Long): Int
+    @Query(
+        """SELECT e.muscleGroup, COUNT(s.id) AS setCount,
+        COALESCE(SUM(COALESCE(s.reps, 0) * COALESCE(s.weightKg, 0)), 0.0) AS volumeKg
+        FROM workout_sets s
+        INNER JOIN exercises e ON e.id = s.exerciseId
+        INNER JOIN workouts w ON w.id = s.workoutId
+        WHERE w.performedOn >= :weekStart AND w.performedOn <= :weekEnd
+          AND s.setType = 'working' AND (s.reps IS NOT NULL OR s.weightKg IS NOT NULL)
+        GROUP BY e.muscleGroup ORDER BY volumeKg DESC""",
+    )
+    fun observeWeeklyMuscleSets(weekStart: String, weekEnd: String): Flow<List<WeeklyMuscleSet>>
+
     @Query("DELETE FROM workouts WHERE id = :id") suspend fun deleteWorkout(id: Long)
 
     @Transaction
@@ -417,6 +436,14 @@ interface ExerciseDao {
     @Query("""SELECT e.* FROM exercises e INNER JOIN workout_sets s ON s.exerciseId = e.id
         GROUP BY e.id ORDER BY MAX(s.id) DESC LIMIT 20""")
     fun observeRecent(): Flow<List<ExerciseEntity>>
+
+    @Query("UPDATE exercises SET muscleGroup = :group WHERE id = :id")
+    suspend fun updateMuscleGroup(id: Long, group: String)
+
+    @Query("""DELETE FROM exercises WHERE id = :id
+        AND id NOT IN (SELECT exerciseId FROM workout_sets)
+        AND id NOT IN (SELECT exerciseId FROM template_exercises)""")
+    suspend fun deleteIfUnused(id: Long): Int
 
     @Query("SELECT COUNT(*) FROM exercises WHERE sourceId IS NOT NULL")
     suspend fun importedCount(): Int

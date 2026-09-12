@@ -39,12 +39,16 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -94,6 +98,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
     var editingFinished by remember { mutableStateOf(false) }
     var showDurationEdit by remember { mutableStateOf(false) }
     var pendingSetDelete by remember { mutableStateOf<Long?>(null) }
+    var editingMuscleGroup by remember { mutableStateOf<Pair<Long, String>?>(null) }
     var restRemaining by remember { mutableIntStateOf(0) }
     var restActive by remember { mutableStateOf(false) }
     var prMessage by remember { mutableStateOf<String?>(null) }
@@ -204,12 +209,14 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
             item {
                 ExerciseHeader(
                     name = current.first().exerciseName,
+                    muscleGroup = current.first().muscleGroup,
                     position = index + 1,
                     count = groups.size,
                     canGoBack = index > 0,
                     canGoForward = index < groups.lastIndex,
                     onBack = { goToExercise(index - 1) },
                     onForward = { goToExercise(index + 1) },
+                    onEditMuscleGroup = { editingMuscleGroup = current.first().exerciseId to current.first().muscleGroup },
                 )
             }
             item {
@@ -331,6 +338,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
             exercises = exercises,
             onToggleFavorite = viewModel::toggleFavorite,
             onCreateExercise = viewModel::findOrCreateExercise,
+            onDeleteExercise = viewModel::deleteExercise,
             onDismiss = { showAddExercise = false },
             onAdd = { exerciseId, reps, weight ->
                 viewModel.appendSet(workoutId, exerciseId, reps, weight?.storageWeight(settings))
@@ -360,6 +368,16 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
         }
     }
     pendingSetDelete?.let { id -> ConfirmDeleteDialog("Delete set?", "This set will be removed from workout volume.", { pendingSetDelete = null }) { viewModel.deleteSet(id); pendingSetDelete = null } }
+    editingMuscleGroup?.let { (exerciseId, current) ->
+        MuscleGroupPickerSheet(
+            current = current,
+            onDismiss = { editingMuscleGroup = null },
+            onSelect = { group ->
+                viewModel.updateMuscleGroup(exerciseId, group)
+                editingMuscleGroup = null
+            },
+        )
+    }
 }
 
 @Composable
@@ -389,17 +407,31 @@ private fun EmptyWorkoutCard(onAdd: () -> Unit) {
 @Composable
 private fun ExerciseHeader(
     name: String,
+    muscleGroup: String,
     position: Int,
     count: Int,
     canGoBack: Boolean,
     canGoForward: Boolean,
     onBack: () -> Unit,
     onForward: () -> Unit,
+    onEditMuscleGroup: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("$position OF $count", fontSize = 10.sp, letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(name, fontSize = 21.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal)
+            Row(
+                Modifier.clickable(onClick = onEditMuscleGroup).padding(top = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    muscleGroup.replaceFirstChar(Char::uppercase),
+                    fontSize = 12.sp,
+                    color = Clay,
+                )
+                Icon(Icons.Outlined.Edit, "Edit muscle group", Modifier.size(11.dp), tint = Clay)
+            }
         }
         IconButton(onClick = onBack, enabled = canGoBack, modifier = Modifier.size(40.dp)) {
             Icon(Icons.Outlined.ChevronLeft, "Previous exercise")
@@ -539,6 +571,7 @@ private fun AddExerciseSheet(
     exercises: List<ExerciseEntity>,
     onToggleFavorite: (Long) -> Unit,
     onCreateExercise: suspend (String) -> ExerciseEntity,
+    onDeleteExercise: suspend (Long) -> Boolean,
     onDismiss: () -> Unit,
     onAdd: (Long, Int?, Double?) -> Unit,
 ) {
@@ -553,7 +586,7 @@ private fun AddExerciseSheet(
         onPrimary = { selected?.let { onAdd(it.id, reps.toIntOrNull(), weight.toDoubleOrNull()) } },
         onDismiss = onDismiss,
     ) {
-        ExerciseSearchField(exercises, selected, { selected = it }, onToggleFavorite, onCreateExercise)
+        ExerciseSearchField(exercises, selected, { selected = it }, onToggleFavorite, onCreateExercise, onDeleteExercise, { selected = null })
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppField(reps, { reps = it.filter(Char::isDigit) }, "Reps", Modifier.weight(1f))
             AppField(weight, { weight = it.filter { char -> char.isDigit() || char == '.' } }, "Weight", Modifier.weight(1f))
@@ -597,6 +630,45 @@ private fun DurationEditDialog(currentSeconds: Long, onDismiss: () -> Unit, onCo
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+val MUSCLE_GROUPS = listOf("chest", "back", "legs", "shoulders", "arms", "core", "other")
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MuscleGroupPickerSheet(
+    current: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = null,
+    ) {
+        Column(
+            Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text("Muscle group", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            MUSCLE_GROUPS.forEach { group ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(group) }
+                        .padding(vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(group.replaceFirstChar(Char::uppercase), Modifier.weight(1f), fontSize = 16.sp)
+                    if (group == current) Icon(Icons.Outlined.Check, null, tint = Clay)
+                }
+                if (group != MUSCLE_GROUPS.last()) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+    }
 }
 
 private fun Double.prettyTracker(): String = if (this % 1.0 == 0.0) toInt().toString() else "%.1f".format(this)

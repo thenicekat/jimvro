@@ -19,6 +19,7 @@ import com.divyateja.jimvro.data.TemplateLine
 import com.divyateja.jimvro.data.TemplateTarget
 import com.divyateja.jimvro.data.ExerciseProgressPoint
 import com.divyateja.jimvro.data.ProgressPhotoEntity
+import com.divyateja.jimvro.data.WeeklyMuscleSet
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -32,6 +33,7 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     val personalRecords = repository.personalRecords.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val recentExercises = repository.recentExercises.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val progressPhotos = repository.progressPhotos.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    fun weeklyMuscleSets(date: String): Flow<List<WeeklyMuscleSet>> = repository.weeklyMuscleSets(date)
 
     fun addMeasurement(value: MeasurementEntity) = viewModelScope.launch { repository.addMeasurement(value) }
     fun deleteMeasurement(value: MeasurementEntity) = viewModelScope.launch { repository.deleteMeasurement(value) }
@@ -56,6 +58,8 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
         repository.isWeightPersonalRecord(exerciseId, setId, weightKg)
     fun setSuperset(workoutId: Long, exerciseIds: List<Long>, groupId: Int?) = viewModelScope.launch { repository.setSuperset(workoutId, exerciseIds, groupId) }
     fun toggleFavorite(exerciseId: Long) = viewModelScope.launch { repository.toggleFavorite(exerciseId) }
+    fun updateMuscleGroup(exerciseId: Long, group: String) = viewModelScope.launch { repository.updateMuscleGroup(exerciseId, group) }
+    suspend fun deleteExercise(exerciseId: Long) = repository.deleteExercise(exerciseId)
     suspend fun findOrCreateExercise(name: String) = repository.findOrCreateExercise(name)
     fun deleteSet(setId: Long) = viewModelScope.launch { repository.deleteSet(setId) }
     fun previousSets(workoutId: Long, exerciseId: Long): Flow<List<PreviousSet>> = repository.previousSets(workoutId, exerciseId)

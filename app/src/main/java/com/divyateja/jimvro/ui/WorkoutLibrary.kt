@@ -92,6 +92,7 @@ fun TemplatesScreen(viewModel: AppViewModel, onBack: () -> Unit, onWorkoutStarte
         exercises = exercises,
         onToggleFavorite = viewModel::toggleFavorite,
         onCreateExercise = viewModel::findOrCreateExercise,
+        onDeleteExercise = viewModel::deleteExercise,
         onDismiss = { createOpen = false },
         onCreate = { name, targets ->
             scope.launch {
@@ -168,7 +169,7 @@ private fun TemplateCard(
             ) { Icon(Icons.Outlined.PlayArrow, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Start") }
         }
     }
-    if (addLine) AddTemplateLineSheet(exercises, viewModel::toggleFavorite, viewModel::findOrCreateExercise, onDismiss = { addLine = false }) { exerciseId, sets, low, high ->
+    if (addLine) AddTemplateLineSheet(exercises, viewModel::toggleFavorite, viewModel::findOrCreateExercise, viewModel::deleteExercise, onDismiss = { addLine = false }) { exerciseId, sets, low, high ->
         viewModel.addTemplateLine(template.id, exerciseId, sets, low, high)
         addLine = false
     }
@@ -275,6 +276,7 @@ fun ExerciseProgressScreen(viewModel: AppViewModel, exerciseId: Long, onBack: ()
     exercises: List<ExerciseEntity>,
     onToggleFavorite: (Long) -> Unit,
     onCreateExercise: suspend (String) -> ExerciseEntity,
+    onDeleteExercise: suspend (Long) -> Boolean,
     onDismiss: () -> Unit,
     onCreate: (String, List<TemplateTarget>) -> Unit,
 ) {
@@ -314,6 +316,8 @@ fun ExerciseProgressScreen(viewModel: AppViewModel, exerciseId: Long, onBack: ()
             onSelected = { selected = it },
             onToggleFavorite = onToggleFavorite,
             onCreateExercise = onCreateExercise,
+            onDeleteExercise = onDeleteExercise,
+            onDeleted = { selected = null },
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TargetStepper("Sets", sets, 1..8, Modifier.weight(1f)) { sets = it }
@@ -358,6 +362,8 @@ internal fun ExerciseSearchField(
     onSelected: (ExerciseEntity) -> Unit,
     onToggleFavorite: (Long) -> Unit = {},
     onCreateExercise: suspend (String) -> ExerciseEntity,
+    onDeleteExercise: suspend (Long) -> Boolean = { false },
+    onDeleted: () -> Unit = {},
 ) {
     var pickerOpen by remember { mutableStateOf(false) }
     Surface(
@@ -385,6 +391,8 @@ internal fun ExerciseSearchField(
             onSelected = { onSelected(it); pickerOpen = false },
             onToggleFavorite = onToggleFavorite,
             onCreateExercise = onCreateExercise,
+            onDeleteExercise = onDeleteExercise,
+            onDeleted = onDeleted,
         )
     }
 }
@@ -396,8 +404,12 @@ private fun ExercisePickerDialog(
     onSelected: (ExerciseEntity) -> Unit,
     onToggleFavorite: (Long) -> Unit,
     onCreateExercise: suspend (String) -> ExerciseEntity,
+    onDeleteExercise: suspend (Long) -> Boolean,
+    onDeleted: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
+    var pendingDelete by remember { mutableStateOf<ExerciseEntity?>(null) }
+    var deleteError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val matches = remember(query, exercises) {
         exercises.asSequence()
@@ -463,6 +475,9 @@ private fun ExercisePickerDialog(
                                     tint = if (exercise.favorite) Clay else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                            IconButton(onClick = { pendingDelete = exercise }) {
+                                Icon(Icons.Outlined.Delete, "Delete ${exercise.name}", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                         HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
                     }
@@ -470,12 +485,30 @@ private fun ExercisePickerDialog(
             }
         }
     }
+    pendingDelete?.let { exercise ->
+        ConfirmDeleteDialog("Delete ${exercise.name}?", "Only exercises with no logged sets or template use can be deleted.", { pendingDelete = null }) {
+            scope.launch {
+                if (onDeleteExercise(exercise.id)) onDeleted()
+                else deleteError = "Remove this exercise from templates or workout history first."
+                pendingDelete = null
+            }
+        }
+    }
+    deleteError?.let { message ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { deleteError = null },
+            confirmButton = { TextButton(onClick = { deleteError = null }) { Text("OK") } },
+            title = { Text("Exercise kept") },
+            text = { Text(message) },
+        )
+    }
 }
 
 @Composable private fun AddTemplateLineSheet(
     exercises: List<ExerciseEntity>,
     onToggleFavorite: (Long) -> Unit,
     onCreateExercise: suspend (String) -> ExerciseEntity,
+    onDeleteExercise: suspend (Long) -> Boolean,
     onDismiss: () -> Unit,
     onAdd: (Long, Int, Int?, Int?) -> Unit,
 ) {
@@ -486,7 +519,7 @@ private fun ExercisePickerDialog(
     FormSheet("Add exercise", "Set a target; weight is logged during training.", "Add exercise", selected != null && (sets.toIntOrNull() ?: 0) > 0, {
         selected?.let { onAdd(it.id, sets.toIntOrNull() ?: 3, low.toIntOrNull(), high.toIntOrNull()) }
     }, onDismiss) {
-        ExerciseSearchField(exercises, selected, { selected = it }, onToggleFavorite, onCreateExercise)
+        ExerciseSearchField(exercises, selected, { selected = it }, onToggleFavorite, onCreateExercise, onDeleteExercise, { selected = null })
         AppField(sets, { sets = it.filter(Char::isDigit) }, "Target sets")
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppField(low, { low = it.filter(Char::isDigit) }, "Min reps", Modifier.weight(1f))

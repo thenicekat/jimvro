@@ -3,6 +3,9 @@ package com.divyateja.jimvro.data
 import android.database.sqlite.SQLiteDatabase
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.temporal.TemporalAdjusters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -22,6 +25,13 @@ class JimvroRepository(private val database: JimvroDatabase) {
     val personalRecords = database.workoutDao().observePersonalRecords()
     val recentExercises = database.exerciseDao().observeRecent()
     val progressPhotos = database.progressPhotoDao().observeAll()
+
+    fun weeklyMuscleSets(date: String): Flow<List<WeeklyMuscleSet>> {
+        val today = LocalDate.parse(date)
+        val weekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).toString()
+        val weekEnd = today.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY)).toString()
+        return database.workoutDao().observeWeeklyMuscleSets(weekStart, weekEnd)
+    }
 
     fun foodOn(date: String): Flow<List<FoodEntryEntity>> = database.foodDao().observeOn(date)
     fun nutritionOn(date: String): Flow<DailyNutrition> = database.foodDao().observeNutritionOn(date)
@@ -54,6 +64,8 @@ class JimvroRepository(private val database: JimvroDatabase) {
         database.workoutDao().maxPriorWorkingWeight(exerciseId, setId)?.let { weightKg > it } ?: true
     suspend fun setSuperset(workoutId: Long, exerciseIds: List<Long>, groupId: Int?) = database.workoutDao().setSuperset(workoutId, exerciseIds, groupId)
     suspend fun toggleFavorite(exerciseId: Long) = database.exerciseDao().toggleFavorite(exerciseId)
+    suspend fun updateMuscleGroup(exerciseId: Long, group: String) = database.exerciseDao().updateMuscleGroup(exerciseId, group)
+    suspend fun deleteExercise(exerciseId: Long) = database.exerciseDao().deleteIfUnused(exerciseId) == 1
     suspend fun deleteSet(setId: Long) = database.workoutDao().deleteSet(setId)
     suspend fun createTemplate(name: String, notes: String? = null) =
         database.templateDao().insertTemplate(WorkoutTemplateEntity(name = name, notes = notes))

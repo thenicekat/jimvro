@@ -30,6 +30,10 @@ class MainActivity : FragmentActivity() {
             breakfastReminderMinutes = preferences.getInt("breakfast_reminder_minutes", 8 * 60),
             lunchReminderMinutes = preferences.getInt("lunch_reminder_minutes", 13 * 60),
             dinnerReminderMinutes = preferences.getInt("dinner_reminder_minutes", 20 * 60),
+            missionStartDate = preferences.getString("mission_start_date", "") ?: "",
+            missionEndDate = preferences.getString("mission_end_date", "") ?: "",
+            goalWeightKg = preferences.getString("goal_weight_kg", null)?.toDoubleOrNull(),
+            weeklyTrainingTarget = preferences.getInt("weekly_training_target", 4),
         )
         ProteinReminderScheduler.sync(this, initialSettings)
         setContent {
@@ -57,6 +61,10 @@ class MainActivity : FragmentActivity() {
                         .putInt("breakfast_reminder_minutes", value.breakfastReminderMinutes)
                         .putInt("lunch_reminder_minutes", value.lunchReminderMinutes)
                         .putInt("dinner_reminder_minutes", value.dinnerReminderMinutes)
+                        .putString("mission_start_date", value.missionStartDate)
+                        .putString("mission_end_date", value.missionEndDate)
+                        .putString("goal_weight_kg", value.goalWeightKg?.toString())
+                        .putInt("weekly_training_target", value.weeklyTrainingTarget)
                         .apply()
                     ProteinReminderScheduler.sync(this, value)
                 }

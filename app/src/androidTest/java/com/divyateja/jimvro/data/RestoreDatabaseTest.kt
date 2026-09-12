@@ -42,7 +42,7 @@ class RestoreDatabaseTest {
 
         val reopened = Room.databaseBuilder(context, JimvroDatabase::class.java, name).build()
         assertEquals(listOf("2026-07-24"), reopened.measurementDao().observeAll().first().map { it.measuredOn })
-        assertEquals(5, reopened.templateDao().observeTemplates().first().size)
+        assertEquals(4, reopened.templateDao().observeTemplates().first().size)
         assertEquals(listOf("Backup workout"), reopened.workoutDao().observeSummaries().first().map { it.name })
         assertEquals(400.0, reopened.workoutDao().observeSummaries().first().single().volumeKg, 0.001)
         assertEquals(1, reopened.workoutDao().observeSetDetails(workoutId).first().size)

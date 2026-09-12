@@ -122,6 +122,41 @@ class RepositoryBehaviorTest {
     }
 
     @Test
+    fun previousSetsIgnoreSkippedTemplateWorkout() = withRepository { repository ->
+        val exercise = repository.findOrCreateExercise("Skipped previous lift")
+        repository.createWorkout(
+            WorkoutEntity(performedOn = "2026-07-18"),
+            listOf(WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, reps = 8, weightKg = 50.0)),
+        )
+        repository.createWorkout(
+            WorkoutEntity(performedOn = "2026-07-20"),
+            listOf(WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id)),
+        )
+        val currentId = repository.addWorkout(WorkoutEntity(performedOn = "2026-07-22"))
+
+        val previous = repository.previousSets(currentId, exercise.id).first()
+        assertEquals(listOf("2026-07-18"), previous.map { it.performedOn }.distinct())
+        assertEquals(50.0, previous.single().weightKg!!, 0.001)
+    }
+
+    @Test
+    fun deletesOnlyExercisesWithoutHistoryOrTemplateUse() = withRepository { repository ->
+        val unused = repository.findOrCreateExercise("Unused exercise")
+        assertTrue(repository.deleteExercise(unused.id))
+
+        val logged = repository.findOrCreateExercise("Logged exercise")
+        repository.createWorkout(
+            WorkoutEntity(performedOn = "2026-07-20"),
+            listOf(WorkoutSetEntity(workoutId = 0, exerciseId = logged.id, reps = 8, weightKg = 50.0)),
+        )
+        assertFalse(repository.deleteExercise(logged.id))
+
+        val templated = repository.findOrCreateExercise("Templated exercise")
+        repository.createTemplate("Delete guard", listOf(TemplateTarget(exerciseId = templated.id, targetSets = 3, repLow = 8, repHigh = 12)))
+        assertFalse(repository.deleteExercise(templated.id))
+    }
+
+    @Test
     fun personalRecordRequiresBeatingPriorWorkingWeight() = withRepository { repository ->
         val exercise = repository.findOrCreateExercise("PR lift")
         val workoutId = repository.createWorkout(

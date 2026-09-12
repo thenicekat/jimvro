@@ -10,6 +10,10 @@ data class AppSettings(
     val breakfastReminderMinutes: Int = 8 * 60,
     val lunchReminderMinutes: Int = 13 * 60,
     val dinnerReminderMinutes: Int = 20 * 60,
+    val missionStartDate: String = "",
+    val missionEndDate: String = "",
+    val goalWeightKg: Double? = null,
+    val weeklyTrainingTarget: Int = 4,
 )
 
 internal fun Double.displayWeight(settings: AppSettings): Double =

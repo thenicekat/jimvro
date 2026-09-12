@@ -153,6 +153,7 @@ import com.divyateja.jimvro.data.WorkoutSummary
 import com.divyateja.jimvro.data.WorkoutSetEntity
 import com.divyateja.jimvro.domain.Macros
 import com.divyateja.jimvro.domain.scaleMacros
+import com.divyateja.jimvro.domain.weeklyScore
 import com.divyateja.jimvro.ui.theme.Clay
 import com.divyateja.jimvro.ui.theme.ClayMuted
 import com.divyateja.jimvro.ui.theme.ThemeMode
@@ -163,11 +164,14 @@ import java.text.SimpleDateFormat
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.time.temporal.ChronoUnit
 import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.file.Files
@@ -493,7 +497,9 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
     val workouts by viewModel.workouts.collectAsStateWithLifecycle()
     val measurements by viewModel.measurements.collectAsStateWithLifecycle()
     val foods by viewModel.foodEntries.collectAsStateWithLifecycle()
-    val date = today()
+    var date by remember { mutableStateOf(today()) }
+    LaunchedEffect(Unit) { while (isActive) { delay(60_000); date = today() } }
+    val weeklyMuscleSets by remember(date) { viewModel.weeklyMuscleSets(date) }.collectAsStateWithLifecycle(emptyList())
     val todayFoods = foods.filter { it.consumedOn == date }
     val calories = todayFoods.sumOf { it.calories ?: 0.0 }
     val protein = todayFoods.sumOf { it.proteinG ?: 0.0 }
@@ -501,6 +507,9 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
     val todayWorkouts = workouts.filter { it.performedOn == date }
     val volume = todayWorkouts.sumOf { it.volumeKg }
     val weeklyVolume = remember(workouts) { weeklyVolumePoints(workouts) }
+    val weeklyScore = remember(date, workouts, foods, measurements, settings) {
+        weeklyScore(LocalDate.parse(date), workouts, foods, measurements, settings.weeklyTrainingTarget, settings.proteinTarget, settings.calorieTarget)
+    }
     val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
     val greeting = when { hour < 12 -> "Good morning."; hour < 18 -> "Good afternoon."; else -> "Good evening." }
     val dashedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.65f)
@@ -521,6 +530,48 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(greeting, fontSize = 38.sp, fontWeight = FontWeight.Light, lineHeight = 42.sp, letterSpacing = (-0.6).sp)
+            }
+        }
+        item {
+            val start = runCatching { LocalDate.parse(settings.missionStartDate) }.getOrNull()
+            val end = runCatching { LocalDate.parse(settings.missionEndDate) }.getOrNull()
+            JournalCard {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("4 MONTH MISSION", fontSize = 10.sp, letterSpacing = 1.5.sp, color = Clay)
+                        Text(
+                            if (start != null && end != null) "Week ${(ChronoUnit.WEEKS.between(start, LocalDate.parse(date)) + 1).coerceAtLeast(1)} / ${(ChronoUnit.WEEKS.between(start, end) + 1).coerceAtLeast(1)}" else "Set your goal and dates",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = { onNavigate("settings") }) { Text(if (start == null || end == null) "Set up" else "Edit") }
+                }
+                if (start != null && end != null) {
+                    val currentWeight = measurements.firstOrNull { it.weightKg != null }?.weightKg
+                    Text(
+                        listOfNotNull(
+                            currentWeight?.displayWeight(settings)?.let { "${it.pretty()} ${settings.weightUnit}" },
+                            settings.goalWeightKg?.displayWeight(settings)?.let { "→ ${it.pretty()} ${settings.weightUnit}" },
+                        ).joinToString("  ").ifBlank { "Add a weigh-in to start the trend" },
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Light,
+                    )
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("This week", Modifier.weight(1f), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${weeklyScore.score}/100", fontSize = 20.sp)
+                }
+                LinearProgressIndicator(progress = { weeklyScore.score / 100f }, modifier = Modifier.fillMaxWidth(), color = Clay)
+                Text(
+                    "Training ${weeklyScore.trainingDone}/${weeklyScore.trainingTarget}  ·  Protein ${weeklyScore.proteinDays}/${weeklyScore.daysElapsed}  ·  Calories ${weeklyScore.calorieDays}/${weeklyScore.daysElapsed}",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                weeklyScore.weeklyWeightChangeKg?.let { change ->
+                    val status = if (change in -0.35..-0.15) "Ideal cut rate" else if (change < -0.35) "Losing quickly" else "Weight trend ${if (change >= 0) "+" else ""}${change.pretty()} kg/week"
+                    Text(if (status.startsWith("Weight trend")) "Weight trend ${if (change >= 0) "+" else ""}${change.displayWeight(settings).pretty()} ${settings.weightUnit}/week" else status, fontSize = 12.sp, color = Clay)
+                }
             }
         }
         item {
@@ -556,6 +607,39 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
                 } else {
                     Text("No tonnage logged yet", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("Log weighted sets to build your weekly trend.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        if (weeklyMuscleSets.isNotEmpty()) item {
+            JournalCard {
+                Text("Muscles this week", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val maxVolume = weeklyMuscleSets.maxOf { it.volumeKg }.coerceAtLeast(1.0)
+                weeklyMuscleSets.forEach { entry ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            entry.muscleGroup.replaceFirstChar(Char::uppercase),
+                            Modifier.width(90.dp),
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .height(6.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(3.dp))
+                        ) {
+                            Box(
+                                Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth((entry.volumeKg / maxVolume).toFloat().coerceIn(0f, 1f))
+                                    .background(Clay, RoundedCornerShape(3.dp))
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("${entry.volumeKg.pretty()} kg", fontSize = 12.sp)
+                            Text("${entry.setCount} sets", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
             }
         }
@@ -1474,6 +1558,7 @@ internal fun FormSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
         shape = RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp),
@@ -1494,7 +1579,7 @@ internal fun FormSheet(
                 Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Column(
-                Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                Modifier.weight(1f).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 content = content,
             )
@@ -1612,7 +1697,15 @@ private fun SettingsSheet(settings: AppSettings, onDismiss: () -> Unit, onSave: 
     var breakfastMinutes by remember(settings) { mutableStateOf(settings.breakfastReminderMinutes) }
     var lunchMinutes by remember(settings) { mutableStateOf(settings.lunchReminderMinutes) }
     var dinnerMinutes by remember(settings) { mutableStateOf(settings.dinnerReminderMinutes) }
-    FormSheet("Goals & units", "Used across nutrition, body measurements, and workouts.", "Save settings", true, {
+    var missionStart by remember(settings) { mutableStateOf(settings.missionStartDate) }
+    var missionEnd by remember(settings) { mutableStateOf(settings.missionEndDate) }
+    var goalWeight by remember(settings) { mutableStateOf(settings.goalWeightKg?.displayWeight(settings)?.pretty().orEmpty()) }
+    var weeklyTraining by remember(settings) { mutableStateOf(settings.weeklyTrainingTarget.toString()) }
+    val missionDatesValid = remember(missionStart, missionEnd) {
+        if (missionStart.isBlank() && missionEnd.isBlank()) true
+        else runCatching { LocalDate.parse(missionEnd) >= LocalDate.parse(missionStart) }.getOrDefault(false)
+    }
+    FormSheet("Goals & units", "Used across nutrition, body measurements, and workouts.", "Save settings", missionDatesValid, {
         onSave(
             settings.copy(
                 weightUnit = weightUnit,
@@ -1624,13 +1717,21 @@ private fun SettingsSheet(settings: AppSettings, onDismiss: () -> Unit, onSave: 
                 breakfastReminderMinutes = breakfastMinutes,
                 lunchReminderMinutes = lunchMinutes,
                 dinnerReminderMinutes = dinnerMinutes,
+                missionStartDate = missionStart,
+                missionEndDate = missionEnd,
+                goalWeightKg = goalWeight.toDoubleOrNull()?.takeIf { it > 0 }?.storageWeight(settings.copy(weightUnit = weightUnit)),
+                weeklyTrainingTarget = weeklyTraining.toIntOrNull()?.coerceIn(1, 7) ?: 4,
             ),
         )
     }, onDismiss) {
         Text("UNITS", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("kg", "lb").forEach { unit ->
-                Button(onClick = { weightUnit = unit }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (weightUnit == unit) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.surface, contentColor = if (weightUnit == unit) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface)) { Text(unit) }
+                Button(onClick = {
+                    val storedGoal = goalWeight.toDoubleOrNull()?.storageWeight(settings.copy(weightUnit = weightUnit))
+                    weightUnit = unit
+                    goalWeight = storedGoal?.displayWeight(settings.copy(weightUnit = unit))?.pretty().orEmpty()
+                }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (weightUnit == unit) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.surface, contentColor = if (weightUnit == unit) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface)) { Text(unit) }
             }
             listOf("cm", "in").forEach { unit ->
                 Button(onClick = { lengthUnit = unit }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (lengthUnit == unit) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.surface, contentColor = if (lengthUnit == unit) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface)) { Text(unit) }
@@ -1657,6 +1758,13 @@ private fun SettingsSheet(settings: AppSettings, onDismiss: () -> Unit, onSave: 
             ReminderTimeField("Breakfast", breakfastMinutes) { breakfastMinutes = it }
             ReminderTimeField("Lunch", lunchMinutes) { lunchMinutes = it }
             ReminderTimeField("Dinner", dinnerMinutes) { dinnerMinutes = it }
+        }
+        Text("4 MONTH MISSION", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        DateField(missionStart, "Start date") { missionStart = it }
+        DateField(missionEnd, "Target date") { missionEnd = it }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            AppField(goalWeight, { goalWeight = it }, "Goal weight ($weightUnit)", Modifier.weight(1f))
+            AppField(weeklyTraining, { weeklyTraining = it.filter(Char::isDigit) }, "Sessions/week", Modifier.weight(1f))
         }
     }
 }
@@ -1700,7 +1808,7 @@ private fun ReminderTimeField(label: String, minutesFromMidnight: Int, onChange:
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DateField(value: String, onChange: (String) -> Unit) {
+private fun DateField(value: String, label: String = "Date", onChange: (String) -> Unit) {
     var pickerOpen by remember { mutableStateOf(false) }
     val selectedMillis = remember(value) {
         runCatching {
@@ -1717,7 +1825,7 @@ private fun DateField(value: String, onChange: (String) -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text("Date", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(formatDateForDisplay(value), fontSize = 16.sp)
         }
         Icon(Icons.Outlined.CalendarMonth, "Choose date", tint = MaterialTheme.colorScheme.onSurfaceVariant)
