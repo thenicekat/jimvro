@@ -1391,11 +1391,6 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
     val todayEntries = foods.filter { it.consumedOn == today() }
     val todayCalories = todayEntries.sumOf { it.calories ?: 0.0 }
     val todayProtein = todayEntries.sumOf { it.proteinG ?: 0.0 }
-    val nutritionDays = remember(foods) {
-        foods.groupBy { it.consumedOn }.toSortedMap().entries.toList().takeLast(7).map { (date, entries) ->
-            date to (entries.sumOf { it.calories ?: 0.0 } to entries.sumOf { it.proteinG ?: 0.0 })
-        }
-    }
     var showAdd by remember { mutableStateOf(false) }
     var scannedProduct by remember { mutableStateOf<BarcodeProductEntity?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -1429,15 +1424,6 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
                     Text("${todayProtein.pretty()} / ${settings.proteinTarget} g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 LinearProgressIndicator(progress = { if (settings.proteinTarget > 0) (todayProtein / settings.proteinTarget).toFloat().coerceIn(0f, 1f) else 0f }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (nutritionDays.size >= 2) {
-                JournalCard {
-                    Text("7-day nutrition", fontSize = 14.sp)
-                    Text("Calories", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    LineTrendChart(nutritionDays.map { ChartPoint(formatDateShort(it.first), it.second.first) })
-                    Text("Protein", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    LineTrendChart(nutritionDays.map { ChartPoint(formatDateShort(it.first), it.second.second) }, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
             }
             Button(
                 onClick = {
@@ -1483,6 +1469,7 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
             }
             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (foods.isEmpty()) EmptyState("No food logged", "Add manually or scan a packaged food.")
+            else Text("LOGGED FOOD", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             foods.groupBy { it.consumedOn }.forEach { (date, entries) ->
                 Text(formatDateForDisplay(date))
                 entries.forEachIndexed { index, food ->
