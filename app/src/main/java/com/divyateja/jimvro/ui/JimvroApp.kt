@@ -1395,7 +1395,6 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
     var scannedProduct by remember { mutableStateOf<BarcodeProductEntity?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var pendingFood by remember { mutableStateOf<FoodEntryEntity?>(null) }
-    var reuseFood by remember { mutableStateOf<SavedFoodEntity?>(null) }
     var pendingSavedFood by remember { mutableStateOf<SavedFoodEntity?>(null) }
     val activity = LocalActivity.current ?: return
     val scope = rememberCoroutineScope()
@@ -1410,7 +1409,7 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
     Page(
         "Nutrition",
         "Food",
-        "Scan a barcode, or log it by hand.",
+        "Tap a regular food once, or add something new.",
         action = { HeaderAddButton("Add") { showAdd = true } },
     ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1454,20 +1453,25 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
             ) { Icon(Icons.Outlined.QrCodeScanner, null); Spacer(Modifier.width(8.dp)); Text("Scan barcode") }
             if (savedFoods.isNotEmpty()) {
-                Text("SAVED FOODS", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                savedFoods.forEach { saved ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { reuseFood = saved }.padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(saved.name, style = MaterialTheme.typography.bodyMedium)
-                            Text("${(saved.calories ?: 0.0).pretty()} kcal · ${(saved.proteinG ?: 0.0).pretty()}g protein", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("QUICK ADD", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                JournalCard {
+                    savedFoods.forEachIndexed { index, saved ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                viewModel.addFood(FoodEntryEntity(consumedOn = today(), name = saved.name, calories = saved.calories, proteinG = saved.proteinG, carbsG = saved.carbsG, fatG = saved.fatG))
+                            }.padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(saved.name, style = MaterialTheme.typography.bodyMedium)
+                                Text("${(saved.calories ?: 0.0).pretty()} kcal · ${(saved.proteinG ?: 0.0).pretty()}g protein", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Icon(Icons.Outlined.Add, "Log now", Modifier.size(18.dp), tint = Clay)
+                            IconButton(onClick = { pendingSavedFood = saved }, modifier = Modifier.size(38.dp)) {
+                                Icon(Icons.Outlined.Delete, "Remove saved food", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
-                        Icon(Icons.Outlined.Add, "Log again", Modifier.size(18.dp), tint = Clay)
-                        IconButton(onClick = { pendingSavedFood = saved }, modifier = Modifier.size(38.dp)) {
-                            Icon(Icons.Outlined.Delete, "Remove saved food", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                        if (index < savedFoods.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
                     }
                 }
             }
@@ -1491,17 +1495,12 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
                 }
             }
     }
-    if (showAdd) FoodDialog(product = null, savedFood = null, onDismiss = { showAdd = false }) { food, save ->
+    if (showAdd) FoodDialog(product = null, onDismiss = { showAdd = false }) { food, save ->
         viewModel.addFood(food, save); showAdd = false
     }
     scannedProduct?.let { product ->
-        FoodDialog(product = product, savedFood = null, onDismiss = { scannedProduct = null }) { food, save ->
+        FoodDialog(product = product, onDismiss = { scannedProduct = null }) { food, save ->
             viewModel.addFood(food, save); scannedProduct = null
-        }
-    }
-    reuseFood?.let { saved ->
-        FoodDialog(product = null, savedFood = saved, onDismiss = { reuseFood = null }) { food, _ ->
-            viewModel.addFood(food); reuseFood = null
         }
     }
     pendingFood?.let { value -> ConfirmDeleteDialog("Delete food?", "This entry will be removed from today’s totals.", { pendingFood = null }) { viewModel.deleteFood(value); pendingFood = null } }
@@ -1924,19 +1923,20 @@ private fun MeasurementDialog(settings: AppSettings, onDismiss: () -> Unit, onSa
 }
 
 @Composable
-private fun FoodDialog(product: BarcodeProductEntity?, savedFood: SavedFoodEntity?, onDismiss: () -> Unit, onSave: (FoodEntryEntity, Boolean) -> Unit) {
+private fun FoodDialog(product: BarcodeProductEntity?, onDismiss: () -> Unit, onSave: (FoodEntryEntity, Boolean) -> Unit) {
     val defaultServing = product?.servingG ?: 100.0
-    var name by remember(product, savedFood) { mutableStateOf(savedFood?.name ?: product?.name.orEmpty()) }
+    var name by remember(product) { mutableStateOf(product?.name.orEmpty()) }
     var serving by remember(product) { mutableStateOf(defaultServing.pretty()) }
-    var calories by remember(product, savedFood) { mutableStateOf(savedFood?.calories?.pretty() ?: product?.caloriesPer100g?.times(defaultServing / 100)?.pretty().orEmpty()) }
-    var protein by remember(product, savedFood) { mutableStateOf(savedFood?.proteinG?.pretty() ?: product?.proteinPer100g?.times(defaultServing / 100)?.pretty().orEmpty()) }
-    var carbs by remember(product, savedFood) { mutableStateOf(savedFood?.carbsG?.pretty() ?: product?.carbsPer100g?.times(defaultServing / 100)?.pretty().orEmpty()) }
-    var fat by remember(product, savedFood) { mutableStateOf(savedFood?.fatG?.pretty() ?: product?.fatPer100g?.times(defaultServing / 100)?.pretty().orEmpty()) }
+    var calories by remember(product) { mutableStateOf(product?.caloriesPer100g?.times(defaultServing / 100)?.pretty().orEmpty()) }
+    var protein by remember(product) { mutableStateOf(product?.proteinPer100g?.times(defaultServing / 100)?.pretty().orEmpty()) }
+    var carbs by remember(product) { mutableStateOf(product?.carbsPer100g?.times(defaultServing / 100)?.pretty().orEmpty()) }
+    var fat by remember(product) { mutableStateOf(product?.fatPer100g?.times(defaultServing / 100)?.pretty().orEmpty()) }
     var date by remember { mutableStateOf(today()) }
-    var saveForReuse by remember { mutableStateOf(false) }
+    var saveForReuse by remember { mutableStateOf(true) }
+    var showMoreMacros by remember { mutableStateOf(false) }
     FormSheet(
-        title = when { savedFood != null -> "Log saved food"; product == null -> "Log food"; else -> "Review scanned food" },
-        description = if (savedFood != null) "Adjust anything you need, then add it to your day." else if (product == null) "Add a meal and its macros." else "Check the serving and nutrition before saving.",
+        title = if (product == null) "Log food" else "Review scanned food",
+        description = if (product == null) "Add a meal and its macros." else "Check the serving and nutrition before saving.",
         primaryLabel = "Add food",
         primaryEnabled = name.isNotBlank(),
         onPrimary = { onSave(FoodEntryEntity(consumedOn = date, name = name.trim(), calories = calories.toDoubleOrNull(), proteinG = protein.toDoubleOrNull(), carbsG = carbs.toDoubleOrNull(), fatG = fat.toDoubleOrNull(), barcode = product?.barcode), saveForReuse) },
@@ -1962,21 +1962,24 @@ private fun FoodDialog(product: BarcodeProductEntity?, savedFood: SavedFoodEntit
                 AppField(calories, { calories = it }, "Calories", Modifier.weight(1f))
                 AppField(protein, { protein = it }, "Protein (g)", Modifier.weight(1f))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                AppField(carbs, { carbs = it }, "Carbs (g)", Modifier.weight(1f))
-                AppField(fat, { fat = it }, "Fat (g)", Modifier.weight(1f))
+            TextButton(onClick = { showMoreMacros = !showMoreMacros }) {
+                Text(if (showMoreMacros) "Hide carbs and fat" else "Add carbs and fat")
             }
-            if (savedFood == null) {
-                Row(
-                    Modifier.fillMaxWidth().clickable { saveForReuse = !saveForReuse }.padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Save for reuse", fontSize = 15.sp)
-                        Text("Keep name and macros in saved foods", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Switch(checked = saveForReuse, onCheckedChange = { saveForReuse = it })
+            if (showMoreMacros) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    AppField(carbs, { carbs = it }, "Carbs (g)", Modifier.weight(1f))
+                    AppField(fat, { fat = it }, "Fat (g)", Modifier.weight(1f))
                 }
+            }
+            Row(
+                Modifier.fillMaxWidth().clickable { saveForReuse = !saveForReuse }.padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Save for reuse", fontSize = 15.sp)
+                    Text("Keep name and macros in quick add", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = saveForReuse, onCheckedChange = { saveForReuse = it })
             }
     }
 }
