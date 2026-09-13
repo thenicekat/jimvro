@@ -439,6 +439,7 @@ internal fun Page(
     title: String,
     subtitle: String,
     action: (@Composable () -> Unit)? = null,
+    showHeader: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     LazyColumn(
@@ -446,17 +447,21 @@ internal fun Page(
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 22.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp),
     ) {
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
-                Column(Modifier.weight(1f)) {
-                    Text(eyebrow.uppercase(), color = Clay, fontSize = 10.sp, letterSpacing = 1.5.sp)
-                    Spacer(Modifier.height(6.dp))
-                    Text(title, style = MaterialTheme.typography.headlineLarge)
-                    Spacer(Modifier.height(6.dp))
-                    Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+        if (showHeader) {
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
+                    Column(Modifier.weight(1f)) {
+                        Text(eyebrow.uppercase(), color = Clay, fontSize = 10.sp, letterSpacing = 1.5.sp)
+                        Spacer(Modifier.height(6.dp))
+                        Text(title, style = MaterialTheme.typography.headlineLarge)
+                        Spacer(Modifier.height(6.dp))
+                        Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    action?.invoke()
                 }
-                action?.invoke()
             }
+        } else if (action != null) item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { action() }
         }
         item { Column(verticalArrangement = Arrangement.spacedBy(14.dp), content = content) }
     }
@@ -1410,7 +1415,8 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
         "Nutrition",
         "Food",
         "Tap a regular food once, or add something new.",
-        action = { HeaderAddButton("Add") { showAdd = true } },
+        action = { HeaderAddButton("Log food") { showAdd = true } },
+        showHeader = false,
     ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth()) {
