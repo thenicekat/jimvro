@@ -1,5 +1,6 @@
 package com.divyateja.jimvro.data
 
+import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import java.net.HttpURLConnection
 import java.net.URL
@@ -9,6 +10,7 @@ import java.time.temporal.TemporalAdjusters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.InputStream
 import java.io.OutputStream
@@ -101,7 +103,24 @@ class JimvroRepository(private val database: JimvroDatabase) {
     suspend fun deleteFood(value: FoodEntryEntity) = database.foodDao().delete(value)
     suspend fun deleteSavedFood(value: SavedFoodEntity) = database.foodDao().deleteSaved(value.name)
 
-    suspend fun removeBundledExercises() = database.exerciseDao().removeBundledCatalog()
+    suspend fun restoreExerciseCatalog(context: Context) {
+        val source = JSONArray(context.assets.open("exercises.json").bufferedReader().use { it.readText() })
+        val exercises = ArrayList<ExerciseEntity>(source.length())
+        for (index in 0 until source.length()) {
+            val item = source.getJSONObject(index)
+            exercises += ExerciseEntity(
+                name = item.getString("name").replaceFirstChar(Char::uppercase),
+                muscleGroup = item.optString("muscleGroup", "other"),
+                sourceId = item.getString("sourceId"),
+                bodyPart = item.optString("bodyPart").ifBlank { null },
+                equipment = item.optString("equipment").ifBlank { null },
+                target = item.optString("target").ifBlank { null },
+                secondaryMuscles = item.optString("secondaryMuscles").ifBlank { null },
+                instructions = item.optString("instructions").ifBlank { null },
+            )
+        }
+        database.exerciseDao().insertAll(exercises)
+    }
 
     suspend fun seedStockTemplates() {
         data class Stock(val name: String, val day: String, val lines: List<Triple<String, Int, IntRange>>)

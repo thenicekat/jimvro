@@ -19,8 +19,11 @@ class JimvroApplication : Application() {
         database = JimvroDatabase.create(this)
         repository = JimvroRepository(database)
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            repository.removeBundledExercises()
             val preferences = getSharedPreferences("jimvro_settings", MODE_PRIVATE)
+            if (preferences.getInt("exercise_catalog_version", 0) < 1) {
+                repository.restoreExerciseCatalog(this@JimvroApplication)
+                preferences.edit().putInt("exercise_catalog_version", 1).apply()
+            }
             if (preferences.getInt("stock_templates_version", 0) < 2) {
                 repository.seedStockTemplates()
                 preferences.edit().putInt("stock_templates_version", 2).apply()

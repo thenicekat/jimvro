@@ -157,6 +157,23 @@ class RepositoryBehaviorTest {
     }
 
     @Test
+    fun restoreExerciseCatalogKeepsExistingExercises() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database = Room.inMemoryDatabaseBuilder(context, JimvroDatabase::class.java).build()
+        try {
+            val repository = JimvroRepository(database)
+            repository.findOrCreateExercise("My custom press")
+            repository.restoreExerciseCatalog(context)
+
+            val names = repository.exercises.first().map { it.name }
+            assertTrue("3/4 sit-up" in names)
+            assertEquals(1, names.count { it == "My custom press" })
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
     fun personalRecordRequiresBeatingPriorWorkingWeight() = withRepository { repository ->
         val exercise = repository.findOrCreateExercise("PR lift")
         val workoutId = repository.createWorkout(
