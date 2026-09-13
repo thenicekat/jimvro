@@ -827,6 +827,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
     var photoRevision by remember { mutableStateOf(0) }
     var photosUnlocked by remember { mutableStateOf(false) }
     var photoAuthError by remember { mutableStateOf<String?>(null) }
+    var showFullHistory by remember { mutableStateOf(false) }
     val photoPickerInFlight = remember { mutableStateOf(false) }
     val context = LocalContext.current
     val activity = LocalActivity.current as? FragmentActivity
@@ -918,20 +919,19 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
         "Body",
         "Weight, body fat, and tape measurements over time.",
         action = { HeaderAddButton("Add") { showAdd = true } },
+        showHeader = false,
     ) {
         if (!photosUnlocked) {
-            Column(
-                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)).padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+            Row(
+                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)).padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Outlined.Lock, null, tint = Clay)
-                Text("Progress photos are locked", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "Unlock with your device PIN, pattern, password, or biometric. Photos relock whenever Jimvro leaves the foreground.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Button(onClick = unlockPhotos) { Text("Unlock photos") }
+                Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                    Text("Progress photos", style = MaterialTheme.typography.titleMedium)
+                    Text("Locked", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                TextButton(onClick = unlockPhotos) { Text("Unlock") }
                 photoAuthError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             }
         } else {
@@ -1042,7 +1042,8 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
             if (measurements.size > 1) {
                 Text("HISTORY", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Column {
-                    measurements.drop(1).forEachIndexed { index, measurement ->
+                    val history = measurements.drop(1).let { if (showFullHistory) it else it.take(4) }
+                    history.forEachIndexed { index, measurement ->
                         Row(
                             Modifier.fillMaxWidth().padding(vertical = 13.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -1067,7 +1068,12 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
                                 Icon(Icons.Outlined.Delete, "Delete measurement", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
-                        if (index < measurements.size - 2) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                        if (index < history.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                    }
+                }
+                if (measurements.size > 5) {
+                    TextButton(onClick = { showFullHistory = !showFullHistory }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (showFullHistory) "Show less" else "Show all ${measurements.size - 1} readings")
                     }
                 }
             }
@@ -1396,6 +1402,7 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
     var message by remember { mutableStateOf<String?>(null) }
     var pendingFood by remember { mutableStateOf<FoodEntryEntity?>(null) }
     var pendingSavedFood by remember { mutableStateOf<SavedFoodEntity?>(null) }
+    var showFullHistory by remember { mutableStateOf(false) }
     val activity = LocalActivity.current ?: return
     val scope = rememberCoroutineScope()
     val scanner = remember {
@@ -1469,8 +1476,9 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
             }
             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (foods.isEmpty()) EmptyState("No food logged", "Add manually or scan a packaged food.")
-            else Text("LOGGED FOOD", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            foods.groupBy { it.consumedOn }.forEach { (date, entries) ->
+            else Text("RECENT FOOD", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val foodDays = foods.groupBy { it.consumedOn }.toList()
+            foodDays.take(if (showFullHistory) foodDays.size else 2).forEach { (date, entries) ->
                 Text(formatDateForDisplay(date))
                 entries.forEachIndexed { index, food ->
                     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -1485,6 +1493,11 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
                         Text("P ${(food.proteinG ?: 0.0).pretty()}g  ·  C ${(food.carbsG ?: 0.0).pretty()}g  ·  F ${(food.fatG ?: 0.0).pretty()}g", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (index < entries.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
+                }
+            }
+            if (foodDays.size > 2) {
+                TextButton(onClick = { showFullHistory = !showFullHistory }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (showFullHistory) "Show less" else "Show all ${foodDays.size} days")
                 }
             }
     }
