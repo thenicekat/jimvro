@@ -311,15 +311,6 @@ fun JimvroApp(
             }
         } }
     }
-    val jsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        uri?.let {
-            val root = JSONObject().put("exportedAt", System.currentTimeMillis())
-                .put("workouts", JSONArray(viewModel.workouts.value.map { row -> JSONObject().put("date", row.performedOn).put("name", row.name).put("sets", row.setCount).put("volumeKg", row.volumeKg) }))
-                .put("measurements", JSONArray(viewModel.measurements.value.map { row -> JSONObject().put("date", row.measuredOn).put("weightKg", row.weightKg).put("bodyFatPct", row.bodyFatPct).put("waistCm", row.waistCm) }))
-                .put("foods", JSONArray(viewModel.foodEntries.value.map { row -> JSONObject().put("date", row.consumedOn).put("name", row.name).put("calories", row.calories).put("proteinG", row.proteinG).put("carbsG", row.carbsG).put("fatG", row.fatG) }))
-            context.contentResolver.openOutputStream(it)?.bufferedWriter()?.use { writer -> writer.write(root.toString(2)) }
-        }
-    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -401,7 +392,6 @@ fun JimvroApp(
                     onHealthSync = requestHealthSync,
                     healthConnectAutoSync = settings.healthConnectAutoSync,
                     onHealthConnectAutoSync = setAutoHealthSync,
-                    onExportJson = { jsonLauncher.launch("jimvro-export.json") },
                     onBackup = { backupLauncher.launch("jimvro-backup.db") },
                     onRestore = { restoreLauncher.launch(arrayOf("application/octet-stream", "application/x-sqlite3", "*/*")) },
                 )
@@ -1641,7 +1631,6 @@ private fun SettingsScreen(
     onHealthSync: () -> Unit,
     healthConnectAutoSync: Boolean,
     onHealthConnectAutoSync: (Boolean) -> Unit,
-    onExportJson: () -> Unit,
     onBackup: () -> Unit,
     onRestore: () -> Unit,
 ) {
@@ -1694,7 +1683,6 @@ private fun SettingsScreen(
         }
         item {
             SettingsSection("YOUR DATA") {
-                SettingsActionRow("Export JSON", "Portable structured export", onExportJson)
                 SettingsActionRow("Backup database", "Complete local backup", onBackup)
                 SettingsActionRow("Restore database", "Replace local data from backup", onRestore)
             }
