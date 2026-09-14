@@ -190,6 +190,10 @@ private enum class Destination(val route: String, val label: String, val icon: I
 private fun today(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 private fun Double.pretty(): String = if (this % 1.0 == 0.0) toInt().toString() else "%.1f".format(this)
 private fun Long.compactDuration(): String = if (this >= 3600) "%dh %02dm".format(this / 3600, (this % 3600) / 60) else "%dm".format(this / 60)
+private val progressPhotoPoses = listOf("Front", "Side", "Back", "Other")
+
+internal fun ProgressPhotoEntity.poseLabel(): String? =
+    notes?.substringBefore(" · ")?.takeIf { it in progressPhotoPoses }
 
 @Suppress("DEPRECATION")
 private fun Configuration.primaryLocale(): Locale =
@@ -841,6 +845,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
     var pendingPhotoPath by remember { mutableStateOf<String?>(null) }
     var selectedPhoto by remember { mutableStateOf<ProgressPhotoEntity?>(null) }
     var comparePhotos by remember { mutableStateOf(false) }
+    var comparisonPose by remember { mutableStateOf<String?>(null) }
     var photoRevision by remember { mutableStateOf(0) }
     var photosUnlocked by remember { mutableStateOf(false) }
     var photoAuthError by remember { mutableStateOf<String?>(null) }
@@ -986,12 +991,19 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
                 latestPhoto.notes?.takeIf(String::isNotBlank)?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (progressPhotos.size >= 2) {
-                    Button(onClick = { comparePhotos = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Compare first and latest")
+                val comparablePoses = progressPhotoPoses.filter { pose -> progressPhotos.count { it.poseLabel() == pose } >= 2 }
+                if (comparablePoses.isNotEmpty()) {
+                    val selectedComparisonPose = comparisonPose?.takeIf { it in comparablePoses } ?: comparablePoses.first()
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        comparablePoses.forEach { pose ->
+                            FilterChip(selected = selectedComparisonPose == pose, onClick = { comparisonPose = pose }, label = { Text(pose) })
+                        }
+                    }
+                    Button(onClick = { comparisonPose = selectedComparisonPose; comparePhotos = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Compare ${selectedComparisonPose.lowercase()} photos")
                     }
                 } else {
-                    Text("Add another photo later to unlock comparison.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Add two photos with the same pose to compare them.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text("TIMELINE", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1125,8 +1137,9 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
             onRotated = { photoRevision++ },
             )
         }
-        if (comparePhotos && progressPhotos.size >= 2) {
-            ProgressPhotoComparison(progressPhotos.last(), progressPhotos.first(), photoRevision) { comparePhotos = false }
+        val matchingPhotos = comparisonPose?.let { pose -> progressPhotos.filter { it.poseLabel() == pose } }.orEmpty()
+        if (comparePhotos && matchingPhotos.size >= 2) {
+            ProgressPhotoComparison(matchingPhotos.last(), matchingPhotos.first(), photoRevision) { comparePhotos = false }
         }
     }
     pendingMeasurement?.let { value -> ConfirmDeleteDialog("Delete measurement?", "This reading will be removed from trends.", { pendingMeasurement = null }) { viewModel.deleteMeasurement(value); pendingMeasurement = null } }
@@ -1232,7 +1245,7 @@ private fun ProgressPhotoDetailsDialog(
                 DateField(date) { date = it }
                 Text("Pose", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    listOf("Front", "Side", "Back", "Other").forEach { option ->
+                    progressPhotoPoses.forEach { option ->
                         FilterChip(selected = pose == option, onClick = { pose = option }, label = { Text(option) })
                     }
                 }
