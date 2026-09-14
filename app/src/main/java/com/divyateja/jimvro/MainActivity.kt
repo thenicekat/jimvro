@@ -34,6 +34,7 @@ class MainActivity : FragmentActivity() {
             missionEndDate = preferences.getString("mission_end_date", "") ?: "",
             goalWeightKg = preferences.getString("goal_weight_kg", null)?.toDoubleOrNull(),
             weeklyTrainingTarget = preferences.getInt("weekly_training_target", 4),
+            healthConnectAutoSync = preferences.getBoolean("health_connect_auto_sync", false),
         )
         ProteinReminderScheduler.sync(this, initialSettings)
         setContent {
@@ -65,6 +66,7 @@ class MainActivity : FragmentActivity() {
                         .putString("mission_end_date", value.missionEndDate)
                         .putString("goal_weight_kg", value.goalWeightKg?.toString())
                         .putInt("weekly_training_target", value.weeklyTrainingTarget)
+                        .putBoolean("health_connect_auto_sync", value.healthConnectAutoSync)
                         .apply()
                     ProteinReminderScheduler.sync(this, value)
                 }

@@ -14,6 +14,7 @@ data class AppSettings(
     val missionEndDate: String = "",
     val goalWeightKg: Double? = null,
     val weeklyTrainingTarget: Int = 4,
+    val healthConnectAutoSync: Boolean = false,
 )
 
 internal fun Double.displayWeight(settings: AppSettings): Double =

@@ -220,17 +220,21 @@ fun JimvroApp(
     var settingsOpen by remember { mutableStateOf(false) }
     var healthMessage by remember { mutableStateOf<String?>(null) }
     var restoreMessage by remember { mutableStateOf<String?>(null) }
+    var enableAutoHealthSyncAfterPermission by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val healthWorkouts by viewModel.workouts.collectAsStateWithLifecycle()
+    val healthMeasurements by viewModel.measurements.collectAsStateWithLifecycle()
+    val healthFoods by viewModel.foodEntries.collectAsStateWithLifecycle()
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val runHealthSync = {
         scope.launch {
             healthMessage = runCatching {
                 val count = HealthConnectSync.sync(
                     context,
-                    viewModel.workouts.value,
-                    viewModel.measurements.value,
-                    viewModel.foodEntries.value,
+                    healthWorkouts,
+                    healthMeasurements,
+                    healthFoods,
                 )
                 if (count == 0) "Nothing ready to sync yet." else "$count records synced to Health Connect."
             }.getOrElse { error -> "Health Connect sync failed: ${error.message ?: "Unknown error"}" }
@@ -239,8 +243,16 @@ fun JimvroApp(
     val healthPermissionLauncher = rememberLauncherForActivityResult(
         PermissionController.createRequestPermissionResultContract(),
     ) { granted ->
-        if (granted.containsAll(HealthConnectSync.permissions)) runHealthSync()
-        else healthMessage = "Health Connect permission was not granted."
+        if (granted.containsAll(HealthConnectSync.permissions)) {
+            if (enableAutoHealthSyncAfterPermission) {
+                enableAutoHealthSyncAfterPermission = false
+                onSettingsChange(settings.copy(healthConnectAutoSync = true))
+            } else runHealthSync()
+        }
+        else {
+            enableAutoHealthSyncAfterPermission = false
+            healthMessage = "Health Connect permission was not granted."
+        }
     }
     val requestHealthSync: () -> Unit = {
         when (HealthConnectSync.availability(context)) {
@@ -255,6 +267,31 @@ fun JimvroApp(
             else -> healthMessage = "Health Connect is unavailable on this device."
         }
         Unit
+    }
+    val setAutoHealthSync: (Boolean) -> Unit = { enabled ->
+        if (!enabled) onSettingsChange(settings.copy(healthConnectAutoSync = false))
+        else when (HealthConnectSync.availability(context)) {
+            HealthConnectClient.SDK_AVAILABLE -> scope.launch {
+                val granted = HealthConnectClient.getOrCreate(context)
+                    .permissionController.getGrantedPermissions()
+                if (granted.containsAll(HealthConnectSync.permissions)) onSettingsChange(settings.copy(healthConnectAutoSync = true))
+                else {
+                    enableAutoHealthSyncAfterPermission = true
+                    healthPermissionLauncher.launch(HealthConnectSync.permissions)
+                }
+            }
+            HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED ->
+                healthMessage = "Install or update Health Connect, then try again."
+            else -> healthMessage = "Health Connect is unavailable on this device."
+        }
+    }
+    LaunchedEffect(settings.healthConnectAutoSync, healthWorkouts, healthMeasurements, healthFoods) {
+        if (settings.healthConnectAutoSync && HealthConnectSync.availability(context) == HealthConnectClient.SDK_AVAILABLE) {
+            val client = HealthConnectClient.getOrCreate(context)
+            if (client.permissionController.getGrantedPermissions().containsAll(HealthConnectSync.permissions)) {
+                runCatching { HealthConnectSync.sync(context, healthWorkouts, healthMeasurements, healthFoods) }
+            }
+        }
     }
     val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         uri?.let { scope.launch { context.contentResolver.openOutputStream(it)?.use { output -> viewModel.backupDatabase(output) } } }
@@ -373,6 +410,8 @@ fun JimvroApp(
                     onBack = { navController.popBackStack() },
                     onGoals = { settingsOpen = true },
                     onHealthSync = requestHealthSync,
+                    healthConnectAutoSync = settings.healthConnectAutoSync,
+                    onHealthConnectAutoSync = setAutoHealthSync,
                     onExportCsv = { csvLauncher.launch("jimvro-export.csv") },
                     onExportJson = { jsonLauncher.launch("jimvro-export.json") },
                     onBackup = { backupLauncher.launch("jimvro-backup.db") },
@@ -1612,6 +1651,8 @@ private fun SettingsScreen(
     onBack: () -> Unit,
     onGoals: () -> Unit,
     onHealthSync: () -> Unit,
+    healthConnectAutoSync: Boolean,
+    onHealthConnectAutoSync: (Boolean) -> Unit,
     onExportCsv: () -> Unit,
     onExportJson: () -> Unit,
     onBackup: () -> Unit,
@@ -1653,6 +1694,14 @@ private fun SettingsScreen(
         }
         item {
             SettingsSection("HEALTH") {
+                Row(Modifier.fillMaxWidth().padding(vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("Auto-sync changes", fontSize = 16.sp)
+                        Text("Export new workouts, measurements, and food while Jimvro is open", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = healthConnectAutoSync, onCheckedChange = onHealthConnectAutoSync)
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
                 SettingsActionRow("Sync Health Connect", "Export finished workouts, weight, body fat, and nutrition", onHealthSync)
             }
         }

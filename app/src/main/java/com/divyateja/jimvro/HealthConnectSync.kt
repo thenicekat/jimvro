@@ -54,7 +54,7 @@ object HealthConnectSync {
                         notes = "${workout.setCount} sets · ${workout.volumeKg.pretty()} kg volume",
                         metadata = Metadata.manualEntry(
                             clientRecordId = "jimvro-workout-${workout.id}",
-                            clientRecordVersion = 1,
+                            clientRecordVersion = workout.finishedAt!!,
                         ),
                     ),
                 )
@@ -69,7 +69,7 @@ object HealthConnectSync {
                             weight = Mass.kilograms(weight),
                             metadata = Metadata.manualEntry(
                                 clientRecordId = "jimvro-weight-${measurement.id}",
-                                clientRecordVersion = 1,
+                                clientRecordVersion = measurement.createdAt,
                             ),
                         ),
                     )
@@ -82,7 +82,7 @@ object HealthConnectSync {
                             percentage = Percentage(bodyFat),
                             metadata = Metadata.manualEntry(
                                 clientRecordId = "jimvro-body-fat-${measurement.id}",
-                                clientRecordVersion = 1,
+                                clientRecordVersion = measurement.createdAt,
                             ),
                         ),
                     )
@@ -105,7 +105,7 @@ object HealthConnectSync {
                         totalFat = food.fatG?.let(Mass::grams),
                         metadata = Metadata.manualEntry(
                             clientRecordId = "jimvro-food-${food.id}",
-                            clientRecordVersion = 1,
+                            clientRecordVersion = food.createdAt,
                         ),
                     ),
                 )

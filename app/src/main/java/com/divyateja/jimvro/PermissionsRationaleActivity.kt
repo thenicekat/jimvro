@@ -27,7 +27,7 @@ class PermissionsRationaleActivity : ComponentActivity() {
                 ) {
                     Text("Health Connect privacy", style = MaterialTheme.typography.headlineLarge)
                     Text(
-                        "Jimvro writes finished workouts, weight, body-fat percentage, and nutrition to your on-device Health Connect store only when you choose Sync Health Connect.",
+                        "Jimvro writes finished workouts, weight, body-fat percentage, and nutrition to your on-device Health Connect store when you choose Sync Health Connect or turn on automatic sync.",
                     )
                     Text(
                         "Jimvro does not upload this health data to a server. You can revoke access or delete shared records from Health Connect at any time.",
