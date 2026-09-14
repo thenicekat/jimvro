@@ -1515,7 +1515,6 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(food.name)
-                                Text(food.meal.replaceFirstChar(Char::uppercase), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                             }
                             Text("${(food.calories ?: 0.0).pretty()} kcal")
                             IconButton(onClick = { pendingFood = food }) { Icon(Icons.Outlined.Delete, "Delete food") }
