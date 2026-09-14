@@ -311,17 +311,6 @@ fun JimvroApp(
             }
         } }
     }
-    val csvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
-        uri?.let {
-            val csv = buildString {
-                appendLine("type,date,name,value,details")
-                viewModel.workouts.value.forEach { row -> appendLine("workout,${row.performedOn},\"${row.name.orEmpty().replace("\"", "\"\"")}\",${row.volumeKg},${row.setCount} sets") }
-                viewModel.measurements.value.forEach { row -> appendLine("measurement,${row.measuredOn},weight,${row.weightKg ?: ""},body fat ${row.bodyFatPct ?: ""}") }
-                viewModel.foodEntries.value.forEach { row -> appendLine("food,${row.consumedOn},\"${row.name.replace("\"", "\"\"")}\",${row.calories ?: ""},protein ${row.proteinG ?: ""}") }
-            }
-            context.contentResolver.openOutputStream(it)?.bufferedWriter()?.use { writer -> writer.write(csv) }
-        }
-    }
     val jsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         uri?.let {
             val root = JSONObject().put("exportedAt", System.currentTimeMillis())
@@ -412,7 +401,6 @@ fun JimvroApp(
                     onHealthSync = requestHealthSync,
                     healthConnectAutoSync = settings.healthConnectAutoSync,
                     onHealthConnectAutoSync = setAutoHealthSync,
-                    onExportCsv = { csvLauncher.launch("jimvro-export.csv") },
                     onExportJson = { jsonLauncher.launch("jimvro-export.json") },
                     onBackup = { backupLauncher.launch("jimvro-backup.db") },
                     onRestore = { restoreLauncher.launch(arrayOf("application/octet-stream", "application/x-sqlite3", "*/*")) },
@@ -1653,7 +1641,6 @@ private fun SettingsScreen(
     onHealthSync: () -> Unit,
     healthConnectAutoSync: Boolean,
     onHealthConnectAutoSync: (Boolean) -> Unit,
-    onExportCsv: () -> Unit,
     onExportJson: () -> Unit,
     onBackup: () -> Unit,
     onRestore: () -> Unit,
@@ -1707,7 +1694,6 @@ private fun SettingsScreen(
         }
         item {
             SettingsSection("YOUR DATA") {
-                SettingsActionRow("Export CSV", "Readable spreadsheet export", onExportCsv)
                 SettingsActionRow("Export JSON", "Portable structured export", onExportJson)
                 SettingsActionRow("Backup database", "Complete local backup", onBackup)
                 SettingsActionRow("Restore database", "Replace local data from backup", onRestore)
