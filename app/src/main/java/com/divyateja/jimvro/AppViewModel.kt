@@ -76,7 +76,9 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     fun reorderTemplateLines(lines: List<TemplateLine>) = viewModelScope.launch { repository.reorderTemplateLines(lines) }
     suspend fun startFromTemplate(templateId: Long, date: String): Long = repository.startFromTemplate(templateId, date)
     fun addFood(value: FoodEntryEntity, saveForReuse: Boolean = false) = viewModelScope.launch { repository.addFood(value, saveForReuse) }
+    fun updateFood(value: FoodEntryEntity) = viewModelScope.launch { repository.updateFood(value) }
     fun deleteFood(value: FoodEntryEntity) = viewModelScope.launch { repository.deleteFood(value) }
+    fun updateSavedFood(value: SavedFoodEntity) = viewModelScope.launch { repository.updateSavedFood(value) }
     fun deleteSavedFood(value: SavedFoodEntity) = viewModelScope.launch { repository.deleteSavedFood(value) }
     suspend fun lookupBarcode(code: String) = repository.lookupBarcode(code)
     suspend fun backupDatabase(output: OutputStream) = repository.backupDatabase(output)

@@ -5,6 +5,7 @@ import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Delete
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.Insert
@@ -150,6 +151,7 @@ data class FoodEntryEntity(
     val fatG: Double? = null,
     val barcode: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
 )
 
 @Entity(tableName = "barcode_products")
@@ -489,12 +491,14 @@ interface FoodDao {
     fun observeNutritionOn(date: String): Flow<DailyNutrition>
 
     @Insert suspend fun insert(value: FoodEntryEntity): Long
+    @androidx.room.Update suspend fun update(value: FoodEntryEntity)
     @Delete suspend fun delete(value: FoodEntryEntity)
 
     @Query("SELECT * FROM saved_foods WHERE id IN (SELECT MAX(id) FROM saved_foods GROUP BY name) ORDER BY id DESC LIMIT 20")
     fun observeSaved(): Flow<List<SavedFoodEntity>>
 
     @Insert suspend fun save(value: SavedFoodEntity): Long
+    @androidx.room.Update suspend fun updateSaved(value: SavedFoodEntity)
     @Query("DELETE FROM saved_foods WHERE name = :name") suspend fun deleteSaved(name: String)
 
     @Query("SELECT * FROM barcode_products WHERE barcode = :barcode")
@@ -517,7 +521,7 @@ interface FoodDao {
         BarcodeProductEntity::class,
         ProgressPhotoEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class JimvroDatabase : RoomDatabase() {
@@ -531,7 +535,7 @@ abstract class JimvroDatabase : RoomDatabase() {
     companion object {
         fun create(context: Context): JimvroDatabase =
             Room.databaseBuilder(context, JimvroDatabase::class.java, "jimvro.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .build()
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -570,6 +574,11 @@ abstract class JimvroDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE workout_sets ADD COLUMN targetRepLow INTEGER")
                 db.execSQL("ALTER TABLE workout_sets ADD COLUMN targetRepHigh INTEGER")
+            }
+        }
+        internal val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE food_entries ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

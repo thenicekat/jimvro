@@ -105,7 +105,7 @@ object HealthConnectSync {
                         totalFat = food.fatG?.let(Mass::grams),
                         metadata = Metadata.manualEntry(
                             clientRecordId = "jimvro-food-${food.id}",
-                            clientRecordVersion = food.createdAt,
+                            clientRecordVersion = food.updatedAt.coerceAtLeast(food.createdAt),
                         ),
                     ),
                 )

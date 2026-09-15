@@ -100,7 +100,9 @@ class JimvroRepository(private val database: JimvroDatabase) {
         database.foodDao().insert(value)
         if (saveForReuse) database.foodDao().save(SavedFoodEntity(name = value.name, calories = value.calories, proteinG = value.proteinG, carbsG = value.carbsG, fatG = value.fatG))
     }
+    suspend fun updateFood(value: FoodEntryEntity) = database.foodDao().update(value.copy(updatedAt = System.currentTimeMillis()))
     suspend fun deleteFood(value: FoodEntryEntity) = database.foodDao().delete(value)
+    suspend fun updateSavedFood(value: SavedFoodEntity) = database.foodDao().updateSaved(value)
     suspend fun deleteSavedFood(value: SavedFoodEntity) = database.foodDao().deleteSaved(value.name)
 
     suspend fun restoreExerciseCatalog(context: Context) {
@@ -206,7 +208,7 @@ class JimvroRepository(private val database: JimvroDatabase) {
                 check(cursor.moveToFirst())
                 cursor.getInt(0)
             }
-            require(version in 1..5) { "Unsupported backup version: $version" }
+            require(version in 1..6) { "Unsupported backup version: $version" }
             val required = setOf("measurements", "workouts", "workout_sets", "food_entries")
             val present = db.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null).use { cursor ->
                 buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) }

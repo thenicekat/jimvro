@@ -61,4 +61,28 @@ class MigrationTest {
         migrated.close()
         context.deleteDatabase(name)
     }
+
+    @Test fun migration5To6AddsFoodEditTimestamp() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "migration-5-6-test"
+        context.deleteDatabase(name)
+        val factory = FrameworkSQLiteOpenHelperFactory()
+        factory.create(SupportSQLiteOpenHelper.Configuration.builder(context).name(name).callback(object : SupportSQLiteOpenHelper.Callback(5) {
+            override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE food_entries (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, consumedOn TEXT NOT NULL, meal TEXT NOT NULL, name TEXT NOT NULL, calories REAL, proteinG REAL, carbsG REAL, fatG REAL, barcode TEXT, createdAt INTEGER NOT NULL)")
+            }
+            override fun onUpgrade(db: androidx.sqlite.db.SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+        }).build()).writableDatabase.close()
+        val migrated = factory.create(SupportSQLiteOpenHelper.Configuration.builder(context).name(name).callback(object : SupportSQLiteOpenHelper.Callback(6) {
+            override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) = Unit
+            override fun onUpgrade(db: androidx.sqlite.db.SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = JimvroDatabase.MIGRATION_5_6.migrate(db)
+        }).build())
+        val columns = mutableSetOf<String>()
+        migrated.writableDatabase.query("PRAGMA table_info(food_entries)").use { cursor ->
+            while (cursor.moveToNext()) columns += cursor.getString(cursor.getColumnIndexOrThrow("name"))
+        }
+        assertTrue(columns.contains("updatedAt"))
+        migrated.close()
+        context.deleteDatabase(name)
+    }
 }
