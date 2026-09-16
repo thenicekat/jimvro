@@ -2010,6 +2010,13 @@ private fun FoodDialog(product: BarcodeProductEntity?, entry: FoodEntryEntity? =
     var date by remember(entry) { mutableStateOf(entry?.consumedOn ?: today()) }
     var saveForReuse by remember(entry) { mutableStateOf(entry == null) }
     var showMoreMacros by remember { mutableStateOf(false) }
+    val macros = { Macros(calories.toDoubleOrNull(), protein.toDoubleOrNull(), carbs.toDoubleOrNull(), fat.toDoubleOrNull()) }
+    val setMacros: (Macros) -> Unit = { scaled ->
+        calories = scaled.calories?.pretty().orEmpty()
+        protein = scaled.proteinG?.pretty().orEmpty()
+        carbs = scaled.carbsG?.pretty().orEmpty()
+        fat = scaled.fatG?.pretty().orEmpty()
+    }
     FormSheet(
         title = if (entry != null) "Edit food" else if (product == null) "Log food" else "Review scanned food",
         description = if (product == null) "Add food and its macros." else "Check the serving and nutrition before saving.",
@@ -2026,14 +2033,10 @@ private fun FoodDialog(product: BarcodeProductEntity?, entry: FoodEntryEntity? =
             if (product != null) AppField(serving, { value ->
                 serving = value
                 value.toDoubleOrNull()?.let { grams ->
-                    val scaled = scaleMacros(
+                    setMacros(scaleMacros(
                         Macros(product.caloriesPer100g, product.proteinPer100g, product.carbsPer100g, product.fatPer100g),
                         grams,
-                    )
-                    calories = scaled.calories?.pretty().orEmpty()
-                    protein = scaled.proteinG?.pretty().orEmpty()
-                    carbs = scaled.carbsG?.pretty().orEmpty()
-                    fat = scaled.fatG?.pretty().orEmpty()
+                    ))
                 }
             }, "Serving (g)")
             Text("MACROS", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -2050,6 +2053,7 @@ private fun FoodDialog(product: BarcodeProductEntity?, entry: FoodEntryEntity? =
                     AppField(fat, { fat = it }, "Fat (g)", Modifier.weight(1f))
                 }
             }
+            MacroMultiplier(macros(), setMacros)
             if (entry == null) Row(
                 Modifier.fillMaxWidth().clickable { saveForReuse = !saveForReuse }.padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -2060,6 +2064,16 @@ private fun FoodDialog(product: BarcodeProductEntity?, entry: FoodEntryEntity? =
                 }
                 Switch(checked = saveForReuse, onCheckedChange = { saveForReuse = it })
             }
+    }
+}
+
+@Composable
+private fun MacroMultiplier(macros: Macros, onChange: (Macros) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Multiply", Modifier.weight(1f), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        listOf(0.5 to "½×", 1.5 to "1.5×", 2.0 to "2×").forEach { (factor, label) ->
+            TextButton(onClick = { onChange(scaleMacros(macros, factor * 100)) }) { Text(label) }
+        }
     }
 }
 
