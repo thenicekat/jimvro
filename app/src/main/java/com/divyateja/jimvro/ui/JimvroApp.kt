@@ -231,6 +231,12 @@ fun JimvroApp(
     val healthMeasurements by viewModel.measurements.collectAsStateWithLifecycle()
     val healthFoods by viewModel.foodEntries.collectAsStateWithLifecycle()
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    LaunchedEffect(Unit) {
+        if (
+            settings.bodyRemindersEnabled && Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
     val runHealthSync = {
         scope.launch {
             healthMessage = runCatching {
