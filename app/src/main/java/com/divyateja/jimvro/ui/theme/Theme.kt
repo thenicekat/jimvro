@@ -13,14 +13,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.divyateja.jimvro.R
 
-val Paper = Color(0xFFF2F0EA)
-val PaperCard = Color(0xFFFAF9F5)
-val Ink = Color(0xFF20221F)
-val MutedInk = Color(0xFF6F716A)
-val Clay = Color(0xFF8B7045)
-val ClayMuted = Color(0xFFE6DFD1)
-val Espresso = Color(0xFF181A17)
-val EspressoCard = Color(0xFF232520)
+val Paper = Color(0xFFF7F8F4)
+val PaperCard = Color(0xFFFFFFFF)
+val Ink = Color(0xFF141813)
+val MutedInk = Color(0xFF62695E)
+val Clay = Color(0xFF577B20)
+val ClayMuted = Color(0xFFE1EBCF)
+val Espresso = Color(0xFF0D0F0E)
+val EspressoCard = Color(0xFF171A18)
 
 val Fraunces = FontFamily(
     Font(R.font.fraunces, FontWeight.Normal),
@@ -38,35 +38,35 @@ private val LightColors = lightColorScheme(
     onBackground = Ink,
     surface = PaperCard,
     onSurface = Ink,
-    surfaceVariant = Color(0xFFE9E6DE),
+    surfaceVariant = Color(0xFFE8ECE1),
     onSurfaceVariant = MutedInk,
     surfaceContainerLowest = PaperCard,
     surfaceContainerLow = PaperCard,
     surfaceContainer = PaperCard,
     surfaceContainerHigh = PaperCard,
-    surfaceContainerHighest = Color(0xFFEDEAE3),
-    outline = Color(0xFFCECBC2),
+    surfaceContainerHighest = Color(0xFFE9EDE3),
+    outline = Color(0xFFC8CEC1),
     error = Color(0xFFB3261E),
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFF1EEE6),
+    primary = Color(0xFFF1F4EC),
     onPrimary = Espresso,
-    secondary = Color(0xFFB99A67),
-    onSecondary = Espresso,
-    tertiary = Color(0xFFB99A67),
+    secondary = Color(0xFFA6D85D),
+    onSecondary = Color(0xFF152000),
+    tertiary = Color(0xFFA6D85D),
     background = Espresso,
-    onBackground = Color(0xFFF0EDE5),
+    onBackground = Color(0xFFF0F3EB),
     surface = EspressoCard,
-    onSurface = Color(0xFFF0EDE5),
-    surfaceVariant = Color(0xFF30332C),
-    onSurfaceVariant = Color(0xFFBEBDB5),
+    onSurface = Color(0xFFF0F3EB),
+    surfaceVariant = Color(0xFF242A21),
+    onSurfaceVariant = Color(0xFFBCC4B5),
     surfaceContainerLowest = Espresso,
     surfaceContainerLow = EspressoCard,
     surfaceContainer = EspressoCard,
-    surfaceContainerHigh = Color(0xFF2B2E28),
-    surfaceContainerHighest = Color(0xFF34372F),
-    outline = Color(0xFF50534A),
+    surfaceContainerHigh = Color(0xFF20241F),
+    surfaceContainerHighest = Color(0xFF292E27),
+    outline = Color(0xFF51594F),
 )
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
