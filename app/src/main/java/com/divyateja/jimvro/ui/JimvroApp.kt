@@ -2069,11 +2069,11 @@ private fun FoodDialog(product: BarcodeProductEntity?, entry: FoodEntryEntity? =
 
 @Composable
 private fun MacroMultiplier(macros: Macros, onChange: (Macros) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Multiply", Modifier.weight(1f), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        listOf(0.5 to "½×", 1.5 to "1.5×", 2.0 to "2×").forEach { (factor, label) ->
-            TextButton(onClick = { onChange(scaleMacros(macros, factor * 100)) }) { Text(label) }
-        }
+    var multiplier by remember { mutableStateOf("1") }
+    val factor = multiplier.toDoubleOrNull()?.takeIf { it > 0 }
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        AppField(multiplier, { multiplier = it.filter { character -> character.isDigit() || character == '.' } }, "Multiply by", Modifier.weight(1f))
+        Button(onClick = { factor?.let { onChange(scaleMacros(macros, it * 100)) } }, enabled = factor != null) { Text("Apply") }
     }
 }
 
