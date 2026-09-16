@@ -261,6 +261,12 @@ interface MeasurementDao {
     @Query("SELECT * FROM measurements ORDER BY measuredOn DESC, createdAt DESC LIMIT 1")
     fun observeLatest(): Flow<MeasurementEntity?>
 
+    @Query("SELECT EXISTS(SELECT 1 FROM measurements WHERE measuredOn = :date AND weightKg IS NOT NULL)")
+    suspend fun hasWeightOn(date: String): Boolean
+
+    @Query("SELECT EXISTS(SELECT 1 FROM measurements WHERE measuredOn BETWEEN :start AND :end AND bodyFatPct IS NOT NULL)")
+    suspend fun hasBodyFatBetween(start: String, end: String): Boolean
+
     @Insert suspend fun insert(value: MeasurementEntity): Long
     @Delete suspend fun delete(value: MeasurementEntity)
 }

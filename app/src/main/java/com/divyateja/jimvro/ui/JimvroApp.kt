@@ -428,7 +428,7 @@ fun JimvroApp(
     if (settingsOpen) SettingsSheet(settings, { settingsOpen = false }) {
         onSettingsChange(it)
         if (
-            it.proteinRemindersEnabled && Build.VERSION.SDK_INT >= 33 &&
+            (it.proteinRemindersEnabled || it.bodyRemindersEnabled) && Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -1750,6 +1750,7 @@ private fun SettingsSheet(settings: AppSettings, onDismiss: () -> Unit, onSave: 
     var weightUnit by remember(settings) { mutableStateOf(settings.weightUnit) }
     var lengthUnit by remember(settings) { mutableStateOf(settings.lengthUnit) }
     var remindersEnabled by remember(settings) { mutableStateOf(settings.proteinRemindersEnabled) }
+    var bodyRemindersEnabled by remember(settings) { mutableStateOf(settings.bodyRemindersEnabled) }
     var breakfastMinutes by remember(settings) { mutableStateOf(settings.breakfastReminderMinutes) }
     var lunchMinutes by remember(settings) { mutableStateOf(settings.lunchReminderMinutes) }
     var dinnerMinutes by remember(settings) { mutableStateOf(settings.dinnerReminderMinutes) }
@@ -1770,6 +1771,7 @@ private fun SettingsSheet(settings: AppSettings, onDismiss: () -> Unit, onSave: 
                 proteinTarget = protein.toIntOrNull()?.coerceAtLeast(0) ?: 0,
                 restSeconds = rest.toIntOrNull()?.coerceIn(15, 600) ?: 90,
                 proteinRemindersEnabled = remindersEnabled,
+                bodyRemindersEnabled = bodyRemindersEnabled,
                 breakfastReminderMinutes = breakfastMinutes,
                 lunchReminderMinutes = lunchMinutes,
                 dinnerReminderMinutes = dinnerMinutes,
@@ -1814,6 +1816,17 @@ private fun SettingsSheet(settings: AppSettings, onDismiss: () -> Unit, onSave: 
             ReminderTimeField("Breakfast", breakfastMinutes) { breakfastMinutes = it }
             ReminderTimeField("Lunch", lunchMinutes) { lunchMinutes = it }
             ReminderTimeField("Dinner", dinnerMinutes) { dinnerMinutes = it }
+        }
+        Text("BODY REMINDERS", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            Modifier.fillMaxWidth().clickable { bodyRemindersEnabled = !bodyRemindersEnabled }.padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("Weight & body fat", fontSize = 15.sp)
+                Text("Daily weight at 8 AM and body fat every Sunday at 8 AM", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = bodyRemindersEnabled, onCheckedChange = { bodyRemindersEnabled = it })
         }
         Text("4 MONTH MISSION", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         DateField(missionStart, "Start date") { missionStart = it }

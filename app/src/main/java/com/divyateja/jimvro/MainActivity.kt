@@ -27,6 +27,7 @@ class MainActivity : FragmentActivity() {
             proteinTarget = preferences.getInt("protein_target", 150),
             restSeconds = preferences.getInt("rest_seconds", 90),
             proteinRemindersEnabled = preferences.getBoolean("protein_reminders_enabled", true),
+            bodyRemindersEnabled = preferences.getBoolean("body_reminders_enabled", true),
             breakfastReminderMinutes = preferences.getInt("breakfast_reminder_minutes", 8 * 60),
             lunchReminderMinutes = preferences.getInt("lunch_reminder_minutes", 13 * 60),
             dinnerReminderMinutes = preferences.getInt("dinner_reminder_minutes", 20 * 60),
@@ -59,6 +60,7 @@ class MainActivity : FragmentActivity() {
                         .putInt("protein_target", value.proteinTarget)
                         .putInt("rest_seconds", value.restSeconds)
                         .putBoolean("protein_reminders_enabled", value.proteinRemindersEnabled)
+                        .putBoolean("body_reminders_enabled", value.bodyRemindersEnabled)
                         .putInt("breakfast_reminder_minutes", value.breakfastReminderMinutes)
                         .putInt("lunch_reminder_minutes", value.lunchReminderMinutes)
                         .putInt("dinner_reminder_minutes", value.dinnerReminderMinutes)

@@ -13,8 +13,10 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.divyateja.jimvro.ui.AppSettings
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.ZonedDateTime
+import java.time.temporal.TemporalAdjusters
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,20 +32,39 @@ internal val proteinMeals = listOf(
     ProteinMeal("dinner", "Dinner", 203),
 )
 
+internal data class BodyReminder(val key: String, val title: String, val requestCode: Int, val weekly: Boolean)
+private val bodyReminders = listOf(
+    BodyReminder("weight", "Weigh in", 204, weekly = false),
+    BodyReminder("body_fat", "Body-fat check", 205, weekly = true),
+)
+
 internal fun nextReminderAt(now: ZonedDateTime, minutesFromMidnight: Int): ZonedDateTime {
     val safeMinutes = minutesFromMidnight.coerceIn(0, 23 * 60 + 59)
     val candidate = now.withHour(safeMinutes / 60).withMinute(safeMinutes % 60).withSecond(0).withNano(0)
     return if (candidate.isAfter(now)) candidate else candidate.plusDays(1)
 }
 
+internal fun nextWeeklyReminderAt(now: ZonedDateTime, minutesFromMidnight: Int): ZonedDateTime {
+    val safeMinutes = minutesFromMidnight.coerceIn(0, 23 * 60 + 59)
+    val candidate = now.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY))
+        .withHour(safeMinutes / 60).withMinute(safeMinutes % 60).withSecond(0).withNano(0)
+    return if (candidate.isAfter(now)) candidate else candidate.plusWeeks(1)
+}
+
 object ProteinReminderScheduler {
     const val ACTION_REMIND = "com.divyateja.jimvro.PROTEIN_REMINDER"
+    const val ACTION_BODY_REMIND = "com.divyateja.jimvro.BODY_REMINDER"
     const val EXTRA_MEAL = "meal"
+    const val EXTRA_BODY_REMINDER = "body_reminder"
 
     fun sync(context: Context, settings: AppSettings) {
         proteinMeals.forEach { meal ->
             if (settings.proteinRemindersEnabled) schedule(context, meal, settings.minutesFor(meal))
             else cancel(context, meal)
+        }
+        bodyReminders.forEach { reminder ->
+            if (settings.bodyRemindersEnabled) scheduleBody(context, reminder)
+            else cancelBody(context, reminder)
         }
     }
 
@@ -70,12 +91,57 @@ object ProteinReminderScheduler {
                 .putExtra(EXTRA_MEAL, meal.key),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+
+    internal fun scheduleBody(context: Context, reminder: BodyReminder) {
+        val now = ZonedDateTime.now()
+        val triggerAt = if (reminder.weekly) nextWeeklyReminderAt(now, 8 * 60) else nextReminderAt(now, 8 * 60)
+        context.getSystemService(AlarmManager::class.java).setAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            triggerAt.toInstant().toEpochMilli(),
+            bodyPendingIntent(context, reminder),
+        )
+    }
+
+    private fun cancelBody(context: Context, reminder: BodyReminder) {
+        context.getSystemService(AlarmManager::class.java).cancel(bodyPendingIntent(context, reminder))
+    }
+
+    private fun bodyPendingIntent(context: Context, reminder: BodyReminder): PendingIntent =
+        PendingIntent.getBroadcast(
+            context,
+            reminder.requestCode,
+            Intent(context, ProteinReminderReceiver::class.java)
+                .setAction(ACTION_BODY_REMIND)
+                .putExtra(EXTRA_BODY_REMINDER, reminder.key),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
 }
 
 class ProteinReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
             ProteinReminderScheduler.sync(context, context.loadReminderSettings())
+            return
+        }
+        if (intent.action == ProteinReminderScheduler.ACTION_BODY_REMIND) {
+            val reminder = bodyReminders.firstOrNull { it.key == intent.getStringExtra(ProteinReminderScheduler.EXTRA_BODY_REMINDER) } ?: return
+            val pendingResult = goAsync()
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                val settings = context.loadReminderSettings()
+                try {
+                    if (!settings.bodyRemindersEnabled) return@launch
+                    val today = LocalDate.now()
+                    val app = context.applicationContext as JimvroApplication
+                    val alreadyLogged = if (reminder.weekly) {
+                        val start = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).toString()
+                        app.repository.hasBodyFatBetween(start, today.toString())
+                    } else app.repository.hasWeightOn(today.toString())
+                    if (!alreadyLogged) showBodyNotification(context, reminder)
+                } finally {
+                    if (settings.bodyRemindersEnabled) ProteinReminderScheduler.scheduleBody(context, reminder)
+                    pendingResult.finish()
+                }
+            }
             return
         }
         if (intent.action != ProteinReminderScheduler.ACTION_REMIND) return
@@ -121,6 +187,31 @@ class ProteinReminderReceiver : BroadcastReceiver() {
                 .build(),
         )
     }
+
+    private fun showBodyNotification(context: Context, reminder: BodyReminder) {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val manager = context.getSystemService(NotificationManager::class.java)
+        if (Build.VERSION.SDK_INT >= 26) {
+            manager.createNotificationChannel(NotificationChannel("body_reminders", "Body reminders", NotificationManager.IMPORTANCE_DEFAULT))
+        }
+        val openApp = PendingIntent.getActivity(
+            context,
+            reminder.requestCode,
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val message = if (reminder.weekly) "Log this week's body-fat measurement." else "Log today's weight."
+        manager.notify(
+            reminder.requestCode,
+            NotificationCompat.Builder(context, "body_reminders")
+                .setSmallIcon(R.drawable.ic_launcher)
+                .setContentTitle(reminder.title)
+                .setContentText(message)
+                .setContentIntent(openApp)
+                .setAutoCancel(true)
+                .build(),
+        )
+    }
 }
 
 internal fun AppSettings.minutesFor(meal: ProteinMeal): Int = when (meal.key) {
@@ -134,6 +225,7 @@ private fun Context.loadReminderSettings(): AppSettings {
     return AppSettings(
         proteinTarget = preferences.getInt("protein_target", 150),
         proteinRemindersEnabled = preferences.getBoolean("protein_reminders_enabled", true),
+        bodyRemindersEnabled = preferences.getBoolean("body_reminders_enabled", true),
         breakfastReminderMinutes = preferences.getInt("breakfast_reminder_minutes", 8 * 60),
         lunchReminderMinutes = preferences.getInt("lunch_reminder_minutes", 13 * 60),
         dinnerReminderMinutes = preferences.getInt("dinner_reminder_minutes", 20 * 60),

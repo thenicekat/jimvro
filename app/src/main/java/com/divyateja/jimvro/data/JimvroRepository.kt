@@ -48,6 +48,8 @@ class JimvroRepository(private val database: JimvroDatabase) {
 
     suspend fun addMeasurement(value: MeasurementEntity) = database.measurementDao().insert(value)
     suspend fun deleteMeasurement(value: MeasurementEntity) = database.measurementDao().delete(value)
+    suspend fun hasWeightOn(date: String) = database.measurementDao().hasWeightOn(date)
+    suspend fun hasBodyFatBetween(start: String, end: String) = database.measurementDao().hasBodyFatBetween(start, end)
     suspend fun addProgressPhoto(value: ProgressPhotoEntity) = database.progressPhotoDao().insert(value)
     suspend fun deleteProgressPhoto(value: ProgressPhotoEntity) = database.progressPhotoDao().delete(value)
     suspend fun addWorkout(value: WorkoutEntity) = database.workoutDao().insertWorkout(value)

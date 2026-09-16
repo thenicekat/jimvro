@@ -34,4 +34,22 @@ class ProteinReminderTest {
             nextReminderAt(now, Int.MAX_VALUE),
         )
     }
+
+    @Test fun weeklyReminderUsesNextSunday() {
+        val now = ZonedDateTime.of(2026, 7, 27, 9, 0, 0, 0, zone)
+
+        assertEquals(
+            ZonedDateTime.of(2026, 8, 2, 8, 0, 0, 0, zone),
+            nextWeeklyReminderAt(now, 8 * 60),
+        )
+    }
+
+    @Test fun passedWeeklyReminderUsesFollowingSunday() {
+        val now = ZonedDateTime.of(2026, 8, 2, 9, 0, 0, 0, zone)
+
+        assertEquals(
+            ZonedDateTime.of(2026, 8, 9, 8, 0, 0, 0, zone),
+            nextWeeklyReminderAt(now, 8 * 60),
+        )
+    }
 }

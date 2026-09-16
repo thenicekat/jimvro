@@ -7,6 +7,7 @@ data class AppSettings(
     val proteinTarget: Int = 150,
     val restSeconds: Int = 90,
     val proteinRemindersEnabled: Boolean = true,
+    val bodyRemindersEnabled: Boolean = true,
     val breakfastReminderMinutes: Int = 8 * 60,
     val lunchReminderMinutes: Int = 13 * 60,
     val dinnerReminderMinutes: Int = 20 * 60,
