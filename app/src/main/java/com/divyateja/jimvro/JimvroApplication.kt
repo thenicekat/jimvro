@@ -20,13 +20,14 @@ class JimvroApplication : Application() {
         repository = JimvroRepository(database)
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             val preferences = getSharedPreferences("jimvro_settings", MODE_PRIVATE)
-            if (preferences.getInt("exercise_catalog_version", 0) < 1) {
+            if (preferences.getInt("exercise_catalog_version", 0) < 2) {
                 repository.restoreExerciseCatalog(this@JimvroApplication)
-                preferences.edit().putInt("exercise_catalog_version", 1).apply()
+                repository.normalizeBundledExerciseGroups()
+                preferences.edit().putInt("exercise_catalog_version", 2).apply()
             }
-            if (preferences.getInt("stock_templates_version", 0) < 2) {
+            if (preferences.getInt("stock_templates_version", 0) < 3) {
                 repository.seedStockTemplates()
-                preferences.edit().putInt("stock_templates_version", 2).apply()
+                preferences.edit().putInt("stock_templates_version", 3).apply()
             }
         }
     }
@@ -34,8 +35,9 @@ class JimvroApplication : Application() {
     suspend fun reloadAfterRestore() = withContext(Dispatchers.IO) {
         database = JimvroDatabase.create(this@JimvroApplication)
         repository = JimvroRepository(database)
+        repository.normalizeBundledExerciseGroups()
         repository.seedStockTemplates()
         getSharedPreferences("jimvro_settings", MODE_PRIVATE)
-            .edit().putInt("stock_templates_version", 2).apply()
+            .edit().putInt("exercise_catalog_version", 2).putInt("stock_templates_version", 3).apply()
     }
 }

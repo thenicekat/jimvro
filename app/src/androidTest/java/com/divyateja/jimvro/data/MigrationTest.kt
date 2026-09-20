@@ -85,4 +85,28 @@ class MigrationTest {
         migrated.close()
         context.deleteDatabase(name)
     }
+
+    @Test fun migration6To7AddsInBodyFields() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "migration-6-7-test"
+        context.deleteDatabase(name)
+        val factory = FrameworkSQLiteOpenHelperFactory()
+        factory.create(SupportSQLiteOpenHelper.Configuration.builder(context).name(name).callback(object : SupportSQLiteOpenHelper.Callback(6) {
+            override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE measurements (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, measuredOn TEXT NOT NULL, weightKg REAL, bodyFatPct REAL, chestCm REAL, waistCm REAL, hipsCm REAL, leftArmCm REAL, rightArmCm REAL, leftThighCm REAL, rightThighCm REAL, notes TEXT, createdAt INTEGER NOT NULL)")
+            }
+            override fun onUpgrade(db: androidx.sqlite.db.SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+        }).build()).writableDatabase.close()
+        val migrated = factory.create(SupportSQLiteOpenHelper.Configuration.builder(context).name(name).callback(object : SupportSQLiteOpenHelper.Callback(7) {
+            override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) = Unit
+            override fun onUpgrade(db: androidx.sqlite.db.SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = JimvroDatabase.MIGRATION_6_7.migrate(db)
+        }).build())
+        val columns = mutableSetOf<String>()
+        migrated.writableDatabase.query("PRAGMA table_info(measurements)").use { cursor ->
+            while (cursor.moveToNext()) columns += cursor.getString(cursor.getColumnIndexOrThrow("name"))
+        }
+        assertTrue(columns.containsAll(listOf("skeletalMuscleKg", "bodyFatMassKg", "basalMetabolicRateKcal", "inBodyScore", "visceralFatLevel", "sourceId")))
+        migrated.close()
+        context.deleteDatabase(name)
+    }
 }

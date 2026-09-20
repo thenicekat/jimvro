@@ -36,6 +36,7 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     fun weeklyMuscleSets(date: String): Flow<List<WeeklyMuscleSet>> = repository.weeklyMuscleSets(date)
 
     fun addMeasurement(value: MeasurementEntity) = viewModelScope.launch { repository.addMeasurement(value) }
+    suspend fun importInBodyCsv(input: InputStream) = repository.importInBodyCsv(input)
     fun deleteMeasurement(value: MeasurementEntity) = viewModelScope.launch { repository.deleteMeasurement(value) }
     fun addProgressPhoto(value: ProgressPhotoEntity) = viewModelScope.launch { repository.addProgressPhoto(value) }
     fun deleteProgressPhoto(value: ProgressPhotoEntity) = viewModelScope.launch { repository.deleteProgressPhoto(value) }

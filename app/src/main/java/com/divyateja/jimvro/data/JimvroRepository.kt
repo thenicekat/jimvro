@@ -15,6 +15,7 @@ import org.json.JSONObject
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.File
+import androidx.room.withTransaction
 
 class JimvroRepository(private val database: JimvroDatabase) {
     val measurements = database.measurementDao().observeAll()
@@ -47,6 +48,8 @@ class JimvroRepository(private val database: JimvroDatabase) {
     fun templateLines(id: Long): Flow<List<TemplateLine>> = database.templateDao().observeLines(id)
 
     suspend fun addMeasurement(value: MeasurementEntity) = database.measurementDao().insert(value)
+    suspend fun importInBodyCsv(input: InputStream): Int =
+        database.measurementDao().insertAll(parseInBodyCsv(input)).count { it != -1L }
     suspend fun deleteMeasurement(value: MeasurementEntity) = database.measurementDao().delete(value)
     suspend fun hasWeightOn(date: String) = database.measurementDao().hasWeightOn(date)
     suspend fun hasBodyFatBetween(start: String, end: String) = database.measurementDao().hasBodyFatBetween(start, end)
@@ -114,7 +117,7 @@ class JimvroRepository(private val database: JimvroDatabase) {
             val item = source.getJSONObject(index)
             exercises += ExerciseEntity(
                 name = item.getString("name").replaceFirstChar(Char::uppercase),
-                muscleGroup = item.optString("muscleGroup", "other"),
+                muscleGroup = canonicalMuscleGroup(item.optString("target").ifBlank { null }),
                 sourceId = item.getString("sourceId"),
                 bodyPart = item.optString("bodyPart").ifBlank { null },
                 equipment = item.optString("equipment").ifBlank { null },
@@ -124,6 +127,12 @@ class JimvroRepository(private val database: JimvroDatabase) {
             )
         }
         database.exerciseDao().insertAll(exercises)
+    }
+
+    suspend fun normalizeBundledExerciseGroups() = database.withTransaction {
+        database.exerciseDao().bundledExercises().forEach { exercise ->
+            database.exerciseDao().updateMuscleGroup(exercise.id, canonicalMuscleGroup(exercise.target))
+        }
     }
 
     suspend fun seedStockTemplates() {
@@ -164,7 +173,7 @@ class JimvroRepository(private val database: JimvroDatabase) {
                 database.templateDao().updateStockTemplate(templateId, notes, -100 + index)
             }
             stock.lines.forEachIndexed { position, (name, sets, reps) ->
-                val exercise = findOrCreateExercise(name)
+                val exercise = findOrCreateExercise(name, stockExerciseGroups.getValue(name))
                 database.templateDao().insertLine(
                     TemplateExerciseEntity(templateId = templateId, exerciseId = exercise.id, position = position, targetSets = sets, repLow = reps.first, repHigh = reps.last),
                 )
@@ -210,7 +219,7 @@ class JimvroRepository(private val database: JimvroDatabase) {
                 check(cursor.moveToFirst())
                 cursor.getInt(0)
             }
-            require(version in 1..6) { "Unsupported backup version: $version" }
+            require(version in 1..7) { "Unsupported backup version: $version" }
             val required = setOf("measurements", "workouts", "workout_sets", "food_entries")
             val present = db.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null).use { cursor ->
                 buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) }
@@ -219,12 +228,18 @@ class JimvroRepository(private val database: JimvroDatabase) {
         }
     }
 
-    suspend fun findOrCreateExercise(rawName: String): ExerciseEntity {
+    suspend fun findOrCreateExercise(rawName: String, muscleGroup: String = "other"): ExerciseEntity {
         val name = rawName.trim().replaceFirstChar(Char::uppercase)
         require(name.isNotBlank()) { "Exercise name is required" }
-        database.exerciseDao().findByName(name)?.let { return it }
-        val id = database.exerciseDao().insert(ExerciseEntity(name = name))
-        return database.exerciseDao().findByName(name) ?: ExerciseEntity(id = id, name = name)
+        database.exerciseDao().findByName(name)?.let { existing ->
+            if (existing.muscleGroup == "other" && muscleGroup != "other") {
+                database.exerciseDao().updateMuscleGroup(existing.id, muscleGroup)
+                return existing.copy(muscleGroup = muscleGroup)
+            }
+            return existing
+        }
+        val id = database.exerciseDao().insert(ExerciseEntity(name = name, muscleGroup = muscleGroup))
+        return database.exerciseDao().findByName(name) ?: ExerciseEntity(id = id, name = name, muscleGroup = muscleGroup)
     }
 
     suspend fun lookupBarcode(rawCode: String): Result<BarcodeProductEntity> = withContext(Dispatchers.IO) {

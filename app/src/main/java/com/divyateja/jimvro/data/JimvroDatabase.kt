@@ -19,12 +19,17 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
-@Entity(tableName = "measurements", indices = [Index("measuredOn")])
+@Entity(tableName = "measurements", indices = [Index("measuredOn"), Index(value = ["sourceId"], unique = true)])
 data class MeasurementEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val measuredOn: String,
     val weightKg: Double? = null,
     val bodyFatPct: Double? = null,
+    val skeletalMuscleKg: Double? = null,
+    val bodyFatMassKg: Double? = null,
+    val basalMetabolicRateKcal: Double? = null,
+    val inBodyScore: Double? = null,
+    val visceralFatLevel: Double? = null,
     val chestCm: Double? = null,
     val waistCm: Double? = null,
     val hipsCm: Double? = null,
@@ -33,6 +38,7 @@ data class MeasurementEntity(
     val leftThighCm: Double? = null,
     val rightThighCm: Double? = null,
     val notes: String? = null,
+    val sourceId: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
 )
 
@@ -267,7 +273,8 @@ interface MeasurementDao {
     @Query("SELECT EXISTS(SELECT 1 FROM measurements WHERE measuredOn BETWEEN :start AND :end AND bodyFatPct IS NOT NULL)")
     suspend fun hasBodyFatBetween(start: String, end: String): Boolean
 
-    @Insert suspend fun insert(value: MeasurementEntity): Long
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insert(value: MeasurementEntity): Long
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertAll(values: List<MeasurementEntity>): List<Long>
     @Delete suspend fun delete(value: MeasurementEntity)
 }
 
@@ -448,6 +455,9 @@ interface ExerciseDao {
     @Query("UPDATE exercises SET muscleGroup = :group WHERE id = :id")
     suspend fun updateMuscleGroup(id: Long, group: String)
 
+    @Query("SELECT * FROM exercises WHERE sourceId IS NOT NULL")
+    suspend fun bundledExercises(): List<ExerciseEntity>
+
     @Query("""DELETE FROM exercises WHERE id = :id
         AND id NOT IN (SELECT exerciseId FROM workout_sets)
         AND id NOT IN (SELECT exerciseId FROM template_exercises)""")
@@ -527,7 +537,7 @@ interface FoodDao {
         BarcodeProductEntity::class,
         ProgressPhotoEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class JimvroDatabase : RoomDatabase() {
@@ -541,7 +551,7 @@ abstract class JimvroDatabase : RoomDatabase() {
     companion object {
         fun create(context: Context): JimvroDatabase =
             Room.databaseBuilder(context, JimvroDatabase::class.java, "jimvro.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build()
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -585,6 +595,17 @@ abstract class JimvroDatabase : RoomDatabase() {
         internal val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE food_entries ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+        internal val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE measurements ADD COLUMN skeletalMuscleKg REAL")
+                db.execSQL("ALTER TABLE measurements ADD COLUMN bodyFatMassKg REAL")
+                db.execSQL("ALTER TABLE measurements ADD COLUMN basalMetabolicRateKcal REAL")
+                db.execSQL("ALTER TABLE measurements ADD COLUMN inBodyScore REAL")
+                db.execSQL("ALTER TABLE measurements ADD COLUMN visceralFatLevel REAL")
+                db.execSQL("ALTER TABLE measurements ADD COLUMN sourceId TEXT")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_measurements_sourceId ON measurements(sourceId)")
             }
         }
     }

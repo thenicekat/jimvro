@@ -144,6 +144,8 @@ import com.divyateja.jimvro.JimvroApplication
 import com.divyateja.jimvro.HealthConnectSync
 import com.divyateja.jimvro.data.BarcodeProductEntity
 import com.divyateja.jimvro.data.ExerciseEntity
+import com.divyateja.jimvro.data.LEGACY_MUSCLE_GROUPS
+import com.divyateja.jimvro.data.MUSCLE_GROUPS
 import com.divyateja.jimvro.data.FoodEntryEntity
 import com.divyateja.jimvro.data.MeasurementEntity
 import com.divyateja.jimvro.data.ProgressPhotoEntity
@@ -230,6 +232,8 @@ fun JimvroApp(
     val healthWorkouts by viewModel.workouts.collectAsStateWithLifecycle()
     val healthMeasurements by viewModel.measurements.collectAsStateWithLifecycle()
     val healthFoods by viewModel.foodEntries.collectAsStateWithLifecycle()
+    val catalogExercises by viewModel.exercises.collectAsStateWithLifecycle()
+    var deferredLegacyExerciseId by remember { mutableStateOf<Long?>(null) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     LaunchedEffect(Unit) {
         if (
@@ -345,8 +349,11 @@ fun JimvroApp(
             NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
                 Destination.entries.forEach { destination ->
                     NavigationBarItem(
-                        selected = currentRoute == destination.route,
-                        onClick = { if (currentRoute != destination.route) navigateRoot(destination.route) },
+                        selected = current == destination,
+                        onClick = {
+                            if (current == destination) navController.popBackStack(destination.route, inclusive = false)
+                            else navigateRoot(destination.route)
+                        },
                         icon = { Icon(destination.icon, null) },
                         label = { Text(destination.label) },
                         colors = NavigationBarItemDefaults.colors(
@@ -449,6 +456,28 @@ fun JimvroApp(
             confirmButton = { TextButton(onClick = { healthMessage = null }) { Text("Done") } },
         )
     }
+    catalogExercises.firstOrNull { it.sourceId == null && it.muscleGroup in LEGACY_MUSCLE_GROUPS && it.id != deferredLegacyExerciseId }?.let { exercise ->
+        AlertDialog(
+            onDismissRequest = { deferredLegacyExerciseId = exercise.id },
+            title = { Text("Categorize ${exercise.name}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("This existing exercise uses the old ${exercise.muscleGroup} category. Choose its specific group; workouts and templates will update automatically.")
+                    MUSCLE_GROUPS.filter { it != "other" }.chunked(3).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            row.forEach { group ->
+                                FilterChip(selected = false, onClick = {
+                                    viewModel.updateMuscleGroup(exercise.id, group)
+                                    deferredLegacyExerciseId = null
+                                }, label = { Text(group.replaceFirstChar(Char::uppercase)) })
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { deferredLegacyExerciseId = exercise.id }) { Text("Later") } },
+        )
+    }
     restoreMessage?.let { message ->
         AlertDialog(
             onDismissRequest = { restoreMessage = null },
@@ -481,8 +510,10 @@ internal fun Page(
                         Text(eyebrow.uppercase(), color = Clay, fontSize = 10.sp, letterSpacing = 1.5.sp)
                         Spacer(Modifier.height(6.dp))
                         Text(title, style = MaterialTheme.typography.headlineLarge)
-                        Spacer(Modifier.height(6.dp))
-                        Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                        if (subtitle.isNotBlank()) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                     action?.invoke()
                 }
@@ -845,6 +876,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
     val measurements by viewModel.measurements.collectAsStateWithLifecycle()
     val progressPhotos by viewModel.progressPhotos.collectAsStateWithLifecycle()
     var showAdd by remember { mutableStateOf(false) }
+    var importMessage by remember { mutableStateOf<String?>(null) }
     var selectedTrend by remember { mutableStateOf("Weight") }
     var pendingMeasurement by remember { mutableStateOf<MeasurementEntity?>(null) }
     var photoError by remember { mutableStateOf<String?>(null) }
@@ -861,6 +893,18 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
     val activity = LocalActivity.current as? FragmentActivity
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
+    val inBodyImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            importMessage = runCatching {
+                context.contentResolver.openInputStream(uri)?.use { viewModel.importInBodyCsv(it) }
+                    ?: error("Could not open the selected file")
+            }.fold(
+                onSuccess = { if (it == 0) "No new InBody readings found." else "$it InBody readings imported." },
+                onFailure = { it.message ?: "Could not import InBody CSV" },
+            )
+        }
+    }
     val photoAuthenticators = BiometricManager.Authenticators.BIOMETRIC_WEAK or
         BiometricManager.Authenticators.DEVICE_CREDENTIAL
     val biometricPrompt = remember(activity) {
@@ -946,9 +990,13 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
         "Measurements",
         "Body",
         "Weight, body fat, and tape measurements over time.",
-        action = { HeaderAddButton("Add") { showAdd = true } },
+        action = {
+            TextButton(onClick = { inBodyImportLauncher.launch(arrayOf("text/csv", "text/comma-separated-values")) }) { Text("Import InBody") }
+            HeaderAddButton("Add") { showAdd = true }
+        },
         showHeader = false,
     ) {
+        importMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         if (!photosUnlocked) {
             Row(
                 Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)).padding(14.dp),
@@ -1028,7 +1076,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                listOf("Weight", "Body fat", "Waist", "Arms", "Thighs").forEach { metric ->
+                listOf("Weight", "Body fat", "Muscle", "Fat mass", "Waist", "Arms", "Thighs").forEach { metric ->
                     FilterChip(selected = selectedTrend == metric, onClick = { selectedTrend = metric }, label = { Text(metric) })
                 }
             }
@@ -1061,6 +1109,20 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
                     BodyStat(latest.bodyFatPct?.pretty() ?: "—", "%", "Body fat", Modifier.weight(1f))
                     BodyStat(latest.waistCm?.displayLength(settings)?.pretty() ?: "—", settings.lengthUnit, "Waist", Modifier.weight(1f))
                 }
+                if (listOf(latest.skeletalMuscleKg, latest.bodyFatMassKg, latest.basalMetabolicRateKcal, latest.visceralFatLevel).any { it != null }) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                    Text(
+                        listOfNotNull(
+                            latest.skeletalMuscleKg?.let { "${it.pretty()} kg muscle" },
+                            latest.bodyFatMassKg?.let { "${it.pretty()} kg fat mass" },
+                            latest.basalMetabolicRateKcal?.let { "${it.pretty()} kcal BMR" },
+                            latest.visceralFatLevel?.let { "Visceral fat ${it.pretty()}" },
+                            latest.inBodyScore?.let { "InBody score ${it.pretty()}" },
+                        ).joinToString("  ·  "),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (listOf(latest.leftArmCm, latest.rightArmCm, latest.leftThighCm, latest.rightThighCm).any { it != null }) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -1088,6 +1150,8 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
                                 Text(
                                     listOfNotNull(
                                         measurement.bodyFatPct?.let { "${it.pretty()}% fat" },
+                                        measurement.skeletalMuscleKg?.let { "${it.pretty()} kg muscle" },
+                                        measurement.bodyFatMassKg?.let { "${it.pretty()} kg fat mass" },
                                         measurement.waistCm?.let { "${it.pretty()} cm waist" },
                                         measurement.leftArmCm?.let { "L arm ${it.pretty()}" },
                                         measurement.rightArmCm?.let { "R arm ${it.pretty()}" },
@@ -1397,12 +1461,14 @@ private fun bodyTrendPoints(measurements: List<MeasurementEntity>, metric: Strin
         val value = when (metric) {
             "Weight" -> measurement.weightKg
             "Body fat" -> measurement.bodyFatPct
+            "Muscle" -> measurement.skeletalMuscleKg
+            "Fat mass" -> measurement.bodyFatMassKg
             "Waist" -> measurement.waistCm
             "Arms" -> listOfNotNull(measurement.leftArmCm, measurement.rightArmCm).takeIf { it.isNotEmpty() }?.average()
             "Thighs" -> listOfNotNull(measurement.leftThighCm, measurement.rightThighCm).takeIf { it.isNotEmpty() }?.average()
             else -> null
         }
-        value?.let { raw -> ChartPoint(formatDateShort(measurement.measuredOn), if (metric == "Weight") raw.displayWeight(settings) else if (metric != "Body fat") raw.displayLength(settings) else raw) }
+        value?.let { raw -> ChartPoint(formatDateShort(measurement.measuredOn), if (metric == "Weight") raw.displayWeight(settings) else if (metric in listOf("Waist", "Arms", "Thighs")) raw.displayLength(settings) else raw) }
     }
 
 @Composable

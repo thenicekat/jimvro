@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
@@ -79,7 +80,7 @@ fun TemplatesScreen(viewModel: AppViewModel, onBack: () -> Unit, onWorkoutStarte
     Page(
         "Training plans",
         "Templates",
-        "Reusable sessions for the workouts you repeat.",
+        "",
         action = { LibraryAddButton("New") { createOpen = true } },
     ) {
         BackLink(onBack)
@@ -115,47 +116,17 @@ private fun TemplateCard(
     var addLine by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<TemplateLine?>(null) }
     var confirmTemplateDelete by remember { mutableStateOf(false) }
+    var editOpen by remember { mutableStateOf(false) }
     JournalCard {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(template.name, fontSize = 17.sp)
-                template.notes?.let { Text(it, fontSize = 11.sp, color = Clay) }
                 Text("${lines.size} exercises", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = { confirmTemplateDelete = true }, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Outlined.Delete, "Delete template", Modifier.size(18.dp))
+            IconButton(onClick = { editOpen = !editOpen }, modifier = Modifier.size(44.dp)) {
+                Icon(Icons.Outlined.Edit, if (editOpen) "Done editing ${template.name}" else "Edit ${template.name}")
             }
-        }
-        lines.forEachIndexed { index, line ->
-            Row(Modifier.fillMaxWidth().clickable { editing = line }, verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(line.exerciseName, fontSize = 14.sp)
-                    Text(
-                        "${line.targetSets} sets${if (line.repLow != null) " · ${line.repLow}${line.repHigh?.let { "–$it" } ?: ""} reps" else ""}",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                IconButton(
-                    onClick = { if (index > 0) viewModel.reorderTemplateLines(lines.toMutableList().apply { add(index - 1, removeAt(index)) }) },
-                    enabled = index > 0,
-                    modifier = Modifier.size(32.dp),
-                ) { Icon(Icons.Outlined.KeyboardArrowUp, "Move up", Modifier.size(17.dp)) }
-                IconButton(
-                    onClick = { if (index < lines.lastIndex) viewModel.reorderTemplateLines(lines.toMutableList().apply { add(index + 1, removeAt(index)) }) },
-                    enabled = index < lines.lastIndex,
-                    modifier = Modifier.size(32.dp),
-                ) { Icon(Icons.Outlined.KeyboardArrowDown, "Move down", Modifier.size(17.dp)) }
-                IconButton(onClick = { viewModel.deleteTemplateLine(line.id) }, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Outlined.Delete, "Remove exercise", Modifier.size(16.dp))
-                }
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = { addLine = true }, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Outlined.Add, null, Modifier.size(17.dp)); Spacer(Modifier.width(5.dp)); Text("Exercise")
-            }
-            Button(
+            IconButton(
                 onClick = {
                     scope.launch {
                         val id = viewModel.startFromTemplate(template.id, SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()))
@@ -163,10 +134,40 @@ private fun TemplateCard(
                     }
                 },
                 enabled = lines.isNotEmpty(),
-                modifier = Modifier.weight(1f).height(44.dp),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.onSurface, contentColor = MaterialTheme.colorScheme.surface),
-            ) { Icon(Icons.Outlined.PlayArrow, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Start") }
+                modifier = Modifier.size(44.dp),
+            ) { Icon(Icons.Outlined.PlayArrow, "Start ${template.name}") }
+        }
+        if (editOpen) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+            lines.forEachIndexed { index, line ->
+                Row(Modifier.fillMaxWidth().clickable { editing = line }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(line.exerciseName, fontSize = 14.sp)
+                        Text(
+                            "${line.targetSets} sets${if (line.repLow != null) " · ${line.repLow}${line.repHigh?.let { "–$it" } ?: ""} reps" else ""}",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconButton(
+                        onClick = { if (index > 0) viewModel.reorderTemplateLines(lines.toMutableList().apply { add(index - 1, removeAt(index)) }) },
+                        enabled = index > 0,
+                        modifier = Modifier.size(32.dp),
+                    ) { Icon(Icons.Outlined.KeyboardArrowUp, "Move up", Modifier.size(17.dp)) }
+                    IconButton(
+                        onClick = { if (index < lines.lastIndex) viewModel.reorderTemplateLines(lines.toMutableList().apply { add(index + 1, removeAt(index)) }) },
+                        enabled = index < lines.lastIndex,
+                        modifier = Modifier.size(32.dp),
+                    ) { Icon(Icons.Outlined.KeyboardArrowDown, "Move down", Modifier.size(17.dp)) }
+                    IconButton(onClick = { viewModel.deleteTemplateLine(line.id) }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Outlined.Delete, "Remove exercise", Modifier.size(16.dp))
+                    }
+                }
+            }
+            TextButton(onClick = { addLine = true }) {
+                Icon(Icons.Outlined.Add, null, Modifier.size(17.dp)); Spacer(Modifier.width(5.dp)); Text("Add exercise")
+            }
+            TextButton(onClick = { confirmTemplateDelete = true }) { Text("Delete template") }
         }
     }
     if (addLine) AddTemplateLineSheet(exercises, viewModel::toggleFavorite, viewModel::findOrCreateExercise, viewModel::deleteExercise, onDismiss = { addLine = false }) { exerciseId, sets, low, high ->

@@ -632,7 +632,7 @@ private fun DurationEditDialog(currentSeconds: Long, onDismiss: () -> Unit, onCo
     )
 }
 
-val MUSCLE_GROUPS = listOf("chest", "back", "legs", "shoulders", "arms", "core", "other")
+val MUSCLE_GROUPS = com.divyateja.jimvro.data.MUSCLE_GROUPS
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
