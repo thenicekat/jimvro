@@ -73,11 +73,36 @@ class JimvroRepository(private val database: JimvroDatabase) {
     suspend fun toggleFavorite(exerciseId: Long) = database.exerciseDao().toggleFavorite(exerciseId)
     suspend fun updateMuscleGroup(exerciseId: Long, group: String) = database.exerciseDao().updateMuscleGroup(exerciseId, group)
     suspend fun deleteExercise(exerciseId: Long) = database.exerciseDao().deleteIfUnused(exerciseId) == 1
+    suspend fun mergeExercises(sourceIds: List<Long>, targetId: Long) = database.withTransaction {
+        sourceIds.distinct().filter { it != targetId }.forEach { sourceId ->
+            database.workoutDao().setsForExercise(sourceId).groupBy { it.workoutId }.forEach { (workoutId, sets) ->
+                val first = database.workoutDao().maxSetNumber(workoutId, targetId) + 1
+                sets.forEachIndexed { index, set -> database.workoutDao().moveSet(set.id, targetId, first + index) }
+            }
+            database.templateDao().linesForExercise(sourceId).forEach { line ->
+                val target = database.templateDao().lineForExercise(line.templateId, targetId)
+                if (target == null) database.templateDao().moveLine(line.id, targetId)
+                else {
+                    database.templateDao().updateLine(target.id, target.targetSets + line.targetSets, listOfNotNull(target.repLow, line.repLow).minOrNull(), listOfNotNull(target.repHigh, line.repHigh).maxOrNull())
+                    database.templateDao().deleteLine(line.id)
+                }
+            }
+            check(database.exerciseDao().deleteIfUnused(sourceId) == 1)
+        }
+    }
+    suspend fun mergeExercises(sourceId: Long, targetId: Long) = mergeExercises(listOf(sourceId), targetId)
     suspend fun deleteSet(setId: Long) = database.workoutDao().deleteSet(setId)
     suspend fun createTemplate(name: String, notes: String? = null) =
         database.templateDao().insertTemplate(WorkoutTemplateEntity(name = name, notes = notes))
     suspend fun createTemplate(name: String, targets: List<TemplateTarget>) =
         database.templateDao().createTemplate(name, targets)
+    suspend fun createTemplateFromWorkout(workoutId: Long, name: String): Long = database.withTransaction {
+        val targets = database.workoutDao().sets(workoutId).groupBy { it.exerciseId }.map { (_, sets) ->
+            TemplateTarget(sets.first().exerciseId, sets.size, sets.mapNotNull { it.targetRepLow ?: it.reps }.minOrNull(), sets.mapNotNull { it.targetRepHigh ?: it.reps }.maxOrNull(), sets.first().setType, sets.first().supersetGroup)
+        }
+        require(targets.isNotEmpty()) { "Workout has no exercises" }
+        database.templateDao().createTemplate(name, targets)
+    }
     suspend fun deleteTemplate(id: Long) = database.templateDao().deleteTemplate(id)
     suspend fun addTemplateLine(templateId: Long, exerciseId: Long, targetSets: Int, repLow: Int?, repHigh: Int?) =
         database.templateDao().insertLine(TemplateExerciseEntity(templateId = templateId, exerciseId = exerciseId, targetSets = targetSets, repLow = repLow, repHigh = repHigh))

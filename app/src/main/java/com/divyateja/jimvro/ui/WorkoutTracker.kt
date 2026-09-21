@@ -95,6 +95,8 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
     var index by remember { mutableIntStateOf(0) }
     var showAddExercise by remember { mutableStateOf(false) }
     var showSummary by remember { mutableStateOf(false) }
+    var showSaveTemplate by remember { mutableStateOf(false) }
+    var templateName by remember { mutableStateOf("") }
     var editingFinished by remember { mutableStateOf(false) }
     var showDurationEdit by remember { mutableStateOf(false) }
     var pendingSetDelete by remember { mutableStateOf<Long?>(null) }
@@ -150,6 +152,10 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                     }
                     Spacer(Modifier.weight(1f))
                     if (finished) {
+                        TextButton(onClick = {
+                            templateName = workout?.name ?: "Workout"
+                            showSaveTemplate = true
+                        }) { Text("Save template") }
                         TextButton(onClick = { editingFinished = !editingFinished }) {
                             Text(if (editingFinished) "Done" else "Edit")
                         }
@@ -353,6 +359,18 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
             text = { Text("${elapsedSeconds.sessionDuration()} · $completed sets · ${totalVolume.prettyTracker()} kg volume · ${groups.size} exercises") },
             confirmButton = { TextButton(onClick = { showSummary = false; onBack() }) { Text("Done") } },
             dismissButton = { TextButton(onClick = { showSummary = false }) { Text("Stay") } },
+        )
+    }
+    if (showSaveTemplate) {
+        AlertDialog(
+            onDismissRequest = { showSaveTemplate = false },
+            title = { Text("Save as template") },
+            text = { OutlinedTextField(templateName, { templateName = it }, label = { Text("Template name") }) },
+            confirmButton = { TextButton(onClick = {
+                viewModel.createTemplateFromWorkout(workoutId, templateName.trim())
+                showSaveTemplate = false
+            }, enabled = templateName.isNotBlank()) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { showSaveTemplate = false }) { Text("Cancel") } },
         )
     }
     if (showDurationEdit) {

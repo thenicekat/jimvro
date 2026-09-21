@@ -119,6 +119,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -1676,6 +1677,7 @@ internal fun FormSheet(
     primaryEnabled: Boolean,
     onPrimary: () -> Unit,
     onDismiss: () -> Unit,
+    primaryHeight: Dp = 50.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     ModalBottomSheet(
@@ -1708,7 +1710,7 @@ internal fun FormSheet(
             Button(
                 onClick = onPrimary,
                 enabled = primaryEnabled,
-                modifier = Modifier.fillMaxWidth().height(50.dp),
+                modifier = Modifier.fillMaxWidth().height(primaryHeight),
                 shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.onSurface,

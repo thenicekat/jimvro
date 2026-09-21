@@ -61,6 +61,7 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     fun toggleFavorite(exerciseId: Long) = viewModelScope.launch { repository.toggleFavorite(exerciseId) }
     fun updateMuscleGroup(exerciseId: Long, group: String) = viewModelScope.launch { repository.updateMuscleGroup(exerciseId, group) }
     suspend fun deleteExercise(exerciseId: Long) = repository.deleteExercise(exerciseId)
+    fun mergeExercises(sourceIds: List<Long>, targetId: Long) = viewModelScope.launch { repository.mergeExercises(sourceIds, targetId) }
     suspend fun findOrCreateExercise(name: String) = repository.findOrCreateExercise(name)
     fun deleteSet(setId: Long) = viewModelScope.launch { repository.deleteSet(setId) }
     fun previousSets(workoutId: Long, exerciseId: Long): Flow<List<PreviousSet>> = repository.previousSets(workoutId, exerciseId)
@@ -68,6 +69,7 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     fun templateLines(id: Long): Flow<List<TemplateLine>> = repository.templateLines(id)
     fun createTemplate(name: String, notes: String? = null) = viewModelScope.launch { repository.createTemplate(name, notes) }
     suspend fun createTemplate(name: String, targets: List<TemplateTarget>) = repository.createTemplate(name, targets)
+    fun createTemplateFromWorkout(workoutId: Long, name: String) = viewModelScope.launch { repository.createTemplateFromWorkout(workoutId, name) }
     fun deleteTemplate(id: Long) = viewModelScope.launch { repository.deleteTemplate(id) }
     fun addTemplateLine(templateId: Long, exerciseId: Long, targetSets: Int, repLow: Int?, repHigh: Int?) = viewModelScope.launch {
         repository.addTemplateLine(templateId, exerciseId, targetSets, repLow, repHigh)

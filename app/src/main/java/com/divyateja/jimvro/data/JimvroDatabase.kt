@@ -348,6 +348,12 @@ interface WorkoutDao {
     suspend fun setSuperset(workoutId: Long, exerciseIds: List<Long>, groupId: Int?)
     @Query("UPDATE workouts SET finishedAt = :finishedAt WHERE id = :workoutId") suspend fun finishWorkout(workoutId: Long, finishedAt: Long)
     @Query("UPDATE workouts SET finishedAt = :finishedAt WHERE id = :workoutId") suspend fun updateFinishedAt(workoutId: Long, finishedAt: Long)
+    @Query("SELECT * FROM workout_sets WHERE exerciseId = :exerciseId ORDER BY workoutId, id")
+    suspend fun setsForExercise(exerciseId: Long): List<WorkoutSetEntity>
+    @Query("SELECT * FROM workout_sets WHERE workoutId = :workoutId ORDER BY id")
+    suspend fun sets(workoutId: Long): List<WorkoutSetEntity>
+    @Query("UPDATE workout_sets SET exerciseId = :exerciseId, setNumber = :setNumber WHERE id = :id")
+    suspend fun moveSet(id: Long, exerciseId: Long, setNumber: Int)
 
     @Query("SELECT MAX(weightKg) FROM workout_sets WHERE exerciseId = :exerciseId AND id != :setId AND setType = 'working'")
     suspend fun maxPriorWorkingWeight(exerciseId: Long, setId: Long): Double?
@@ -437,6 +443,12 @@ interface TemplateDao {
     @Query("SELECT * FROM workout_templates WHERE id = :id") suspend fun template(id: Long): WorkoutTemplateEntity?
     @Query("SELECT * FROM workout_templates WHERE name = :name COLLATE NOCASE LIMIT 1") suspend fun templateByName(name: String): WorkoutTemplateEntity?
     @Query("SELECT * FROM template_exercises WHERE templateId = :id ORDER BY position, id") suspend fun lines(id: Long): List<TemplateExerciseEntity>
+    @Query("SELECT * FROM template_exercises WHERE exerciseId = :exerciseId ORDER BY templateId, position, id")
+    suspend fun linesForExercise(exerciseId: Long): List<TemplateExerciseEntity>
+    @Query("SELECT * FROM template_exercises WHERE templateId = :templateId AND exerciseId = :exerciseId LIMIT 1")
+    suspend fun lineForExercise(templateId: Long, exerciseId: Long): TemplateExerciseEntity?
+    @Query("UPDATE template_exercises SET exerciseId = :exerciseId WHERE id = :id")
+    suspend fun moveLine(id: Long, exerciseId: Long)
     @Query("DELETE FROM template_exercises WHERE templateId = :templateId") suspend fun deleteLines(templateId: Long)
     @Query("UPDATE workout_templates SET notes = :notes, position = :position WHERE id = :id")
     suspend fun updateStockTemplate(id: Long, notes: String, position: Int)

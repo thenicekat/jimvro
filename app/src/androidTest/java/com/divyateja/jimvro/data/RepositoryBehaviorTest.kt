@@ -189,6 +189,45 @@ class RepositoryBehaviorTest {
         assertTrue(repository.isWeightPersonalRecord(exercise.id, sets[1].id, 62.5))
     }
 
+    @Test
+    fun mergeExercisesPreservesWorkoutHistoryAndTemplateSets() = withRepository { repository ->
+        val old = repository.findOrCreateExercise("Old press")
+        val older = repository.findOrCreateExercise("Older press")
+        val canonical = repository.findOrCreateExercise("Press")
+        val workoutId = repository.createWorkout(WorkoutEntity(performedOn = "2026-07-27"), listOf(
+            WorkoutSetEntity(workoutId = 0, exerciseId = old.id, reps = 8, weightKg = 60.0),
+            WorkoutSetEntity(workoutId = 0, exerciseId = older.id, reps = 7, weightKg = 62.5),
+            WorkoutSetEntity(workoutId = 0, exerciseId = canonical.id, reps = 6, weightKg = 65.0),
+        ))
+        val templateId = repository.createTemplate("Press day", listOf(
+            TemplateTarget(old.id, 2, 8, 10), TemplateTarget(older.id, 1, 8, 10), TemplateTarget(canonical.id, 3, 6, 8),
+        ))
+
+        repository.mergeExercises(listOf(old.id, older.id), canonical.id)
+
+        assertEquals(listOf(canonical.id, canonical.id, canonical.id), repository.workoutSets(workoutId).first().map { it.exerciseId })
+        assertEquals(listOf(6), repository.templateLines(templateId).first().map { it.targetSets })
+        assertFalse(repository.exercises.first().any { it.id == old.id })
+        assertFalse(repository.exercises.first().any { it.id == older.id })
+    }
+
+    @Test
+    fun workoutCanBecomeTemplate() = withRepository { repository ->
+        val exercise = repository.findOrCreateExercise("Template lift")
+        val workoutId = repository.createWorkout(WorkoutEntity(performedOn = "2026-07-27"), listOf(
+            WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, reps = 8, targetRepLow = 6, targetRepHigh = 10),
+            WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, reps = 9, targetRepLow = 6, targetRepHigh = 10),
+        ))
+
+        val templateId = repository.createTemplateFromWorkout(workoutId, "Past workout")
+
+        val line = repository.templateLines(templateId).first().single()
+        assertEquals("Past workout", repository.templates.first().single { it.id == templateId }.name)
+        assertEquals(2, line.targetSets)
+        assertEquals(6, line.repLow)
+        assertEquals(10, line.repHigh)
+    }
+
     private fun withRepository(block: suspend (JimvroRepository) -> Unit) = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val database = Room.inMemoryDatabaseBuilder(context, JimvroDatabase::class.java).build()

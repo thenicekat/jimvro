@@ -202,7 +202,12 @@ private fun EditTemplateLineSheet(line: TemplateLine, onDismiss: () -> Unit, onS
 @Composable
 fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit, onExercise: (Long) -> Unit) {
     val records by viewModel.personalRecords.collectAsStateWithLifecycle()
-    Page("Training", "Personal records", "Your heaviest logged set for each exercise.") {
+    var mergeInto by remember { mutableStateOf<Long?>(null) }
+    val mergeFrom = remember { mutableStateListOf<Long>() }
+    var showMerge by remember { mutableStateOf(false) }
+    Page("Training", "Personal records", "Your heaviest logged set for each exercise.", action = {
+        TextButton(onClick = { showMerge = true }, enabled = records.size > 1) { Text("Combine") }
+    }) {
         BackLink(onBack)
         if (records.isEmpty()) Text("No records yet. Log weighted sets to build this list.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         records.groupBy { it.muscleGroup }.forEach { (group, items) ->
@@ -219,6 +224,37 @@ fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit, onExercise: (Long
                     }
                 }
             }
+        }
+    }
+    if (showMerge) FormSheet(
+        "Merge exercises",
+        "Choose the exercise to keep, then select duplicates to merge into it.",
+        "Merge ${mergeFrom.size} exercises",
+        mergeInto != null && mergeFrom.isNotEmpty(),
+        {
+            viewModel.mergeExercises(mergeFrom.toList(), requireNotNull(mergeInto))
+            showMerge = false; mergeInto = null; mergeFrom.clear()
+        },
+        { showMerge = false },
+        primaryHeight = 60.dp,
+    ) {
+        Text("KEEP", fontSize = 10.sp, letterSpacing = 1.4.sp, color = Clay)
+        records.forEach { record ->
+            FilterChip(
+                selected = mergeInto == record.exerciseId,
+                onClick = { mergeInto = record.exerciseId; mergeFrom.remove(record.exerciseId) },
+                label = { Text(record.exerciseName) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Text("DUPLICATES", fontSize = 10.sp, letterSpacing = 1.4.sp, color = Clay)
+        records.filter { it.exerciseId != mergeInto }.forEach { record ->
+            FilterChip(
+                selected = record.exerciseId in mergeFrom,
+                onClick = { if (!mergeFrom.remove(record.exerciseId)) mergeFrom += record.exerciseId },
+                label = { Text(record.exerciseName) },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
