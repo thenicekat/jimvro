@@ -4,6 +4,12 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.ClipData
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.VibrationEffect
@@ -75,6 +81,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.divyateja.jimvro.AppViewModel
 import com.divyateja.jimvro.data.ExerciseEntity
@@ -134,6 +141,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
     val finished = workout?.finishedAt != null
     val canEdit = !finished || editingFinished
     val elapsedSeconds = workout?.let { ((it.finishedAt ?: now) - it.createdAt).coerceAtLeast(0) / 1_000 } ?: 0
+    val shareWorkout = { shareWorkoutImage(context, workout?.name ?: "Workout", formatDateForDisplay(workout?.performedOn.orEmpty()), elapsedSeconds, completed, totalVolume, groups) }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -156,6 +164,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                             templateName = workout?.name ?: "Workout"
                             showSaveTemplate = true
                         }) { Text("Save template") }
+                        TextButton(onClick = shareWorkout) { Text("Share") }
                         TextButton(onClick = { editingFinished = !editingFinished }) {
                             Text(if (editingFinished) "Done" else "Edit")
                         }
@@ -396,6 +405,45 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
             },
         )
     }
+}
+
+private fun shareWorkoutImage(context: Context, name: String, date: String, seconds: Long, completed: Int, volumeKg: Double, groups: List<List<WorkoutSetDetail>>) {
+    val logged = groups.mapNotNull { exerciseSets ->
+        exerciseSets.filter { it.reps != null || it.weightKg != null }.takeIf { it.isNotEmpty() }?.let { sets ->
+            exerciseSets.first().exerciseName to sets.joinToString("  ·  ") { set ->
+                listOfNotNull(set.reps?.let { "$it reps" }, set.weightKg?.let { "$it kg" }).joinToString(" × ")
+            }
+        }
+    }
+    val bitmap = Bitmap.createBitmap(1080, 430 + logged.size * 140, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    canvas.drawColor(Color.rgb(13, 16, 14))
+    paint.color = Color.rgb(151, 202, 70); paint.textSize = 30f; paint.letterSpacing = 0.12f
+    canvas.drawText("JIMVRO · WORKOUT", 72f, 88f, paint)
+    paint.color = Color.rgb(246, 247, 244); paint.textSize = 58f; paint.letterSpacing = 0f
+    canvas.drawText(name.take(30), 72f, 168f, paint)
+    paint.color = Color.rgb(190, 195, 187); paint.textSize = 28f
+    canvas.drawText("$date · ${seconds.sessionDuration()}", 72f, 218f, paint)
+    paint.color = Color.rgb(246, 247, 244); paint.textSize = 36f
+    canvas.drawText("$completed sets  ·  ${volumeKg.prettyTracker()} kg volume", 72f, 298f, paint)
+    var y = 390f
+    logged.forEach { (exercise, sets) ->
+        paint.color = Color.rgb(246, 247, 244); paint.textSize = 32f
+        canvas.drawText(exercise.take(42), 72f, y, paint)
+        paint.color = Color.rgb(190, 195, 187); paint.textSize = 25f
+        canvas.drawText(sets.take(70), 72f, y + 40f, paint)
+        y += 140f
+    }
+    val output = java.io.File(context.cacheDir, "jimvro-workout.png")
+    output.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", output)
+    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+        type = "image/png"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        clipData = ClipData.newRawUri("workout", uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }, "Share workout"))
 }
 
 @Composable

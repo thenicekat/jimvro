@@ -34,6 +34,18 @@ is governed by their own privacy terms.
 
 Successful product lookups may be cached locally for offline reuse.
 
+## Photo food estimates (optional)
+
+If you add your own Google Gemini API key in Settings and choose Estimate from
+photo, Jimvro sends a compressed copy of the selected meal photo to Google's
+Gemini API to estimate calories and macronutrients. The API key is stored only
+in app preferences on your device. Jimvro does not receive the key, the photo,
+or the estimate. Google's handling of request content is governed by Google's
+terms for the Gemini API.
+
+This feature is optional. Without a key, photo estimates are unavailable and
+no meal photos are uploaded for nutrition estimation.
+
 ## Health Connect
 
 Health Connect integration is optional and runs only after you select the sync

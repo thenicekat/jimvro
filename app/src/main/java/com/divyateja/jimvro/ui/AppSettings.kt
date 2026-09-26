@@ -16,6 +16,7 @@ data class AppSettings(
     val goalWeightKg: Double? = null,
     val weeklyTrainingTarget: Int = 4,
     val healthConnectAutoSync: Boolean = false,
+    val geminiApiKey: String = "",
 )
 
 internal fun Double.displayWeight(settings: AppSettings): Double =

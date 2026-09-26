@@ -52,6 +52,8 @@ import androidx.compose.material.icons.outlined.ArrowOutward
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.RotateLeft
 import androidx.compose.material.icons.outlined.RotateRight
@@ -117,6 +119,8 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
@@ -128,6 +132,7 @@ import androidx.health.connect.client.PermissionController
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -145,6 +150,7 @@ import com.divyateja.jimvro.JimvroApplication
 import com.divyateja.jimvro.HealthConnectSync
 import com.divyateja.jimvro.data.BarcodeProductEntity
 import com.divyateja.jimvro.data.ExerciseEntity
+import com.divyateja.jimvro.data.FoodPhotoEstimate
 import com.divyateja.jimvro.data.LEGACY_MUSCLE_GROUPS
 import com.divyateja.jimvro.data.MUSCLE_GROUPS
 import com.divyateja.jimvro.data.FoodEntryEntity
@@ -225,6 +231,7 @@ fun JimvroApp(
         }
     }
     var settingsOpen by remember { mutableStateOf(false) }
+    var geminiKeyOpen by remember { mutableStateOf(false) }
     var healthMessage by remember { mutableStateOf<String?>(null) }
     var restoreMessage by remember { mutableStateOf<String?>(null) }
     var enableAutoHealthSyncAfterPermission by remember { mutableStateOf(false) }
@@ -407,6 +414,8 @@ fun JimvroApp(
                     onThemeModeChange = onThemeModeChange,
                     onBack = { navController.popBackStack() },
                     onGoals = { settingsOpen = true },
+                    onGeminiKey = { geminiKeyOpen = true },
+                    geminiKeyConfigured = settings.geminiApiKey.isNotBlank(),
                     onHealthSync = requestHealthSync,
                     healthConnectAutoSync = settings.healthConnectAutoSync,
                     onHealthConnectAutoSync = setAutoHealthSync,
@@ -448,6 +457,10 @@ fun JimvroApp(
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         settingsOpen = false
+    }
+    if (geminiKeyOpen) GeminiKeySheet(settings, { geminiKeyOpen = false }) {
+        onSettingsChange(it)
+        geminiKeyOpen = false
     }
     healthMessage?.let { message ->
         AlertDialog(
@@ -1502,6 +1515,10 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
     val todayProtein = todayEntries.sumOf { it.proteinG ?: 0.0 }
     var showAdd by remember { mutableStateOf(false) }
     var scannedProduct by remember { mutableStateOf<BarcodeProductEntity?>(null) }
+    var photoEstimate by remember { mutableStateOf<FoodPhotoEstimate?>(null) }
+    var photoPreview by remember { mutableStateOf<ImageBitmap?>(null) }
+    var estimatingPhoto by remember { mutableStateOf(false) }
+    var cameraCaptureUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var pendingFood by remember { mutableStateOf<FoodEntryEntity?>(null) }
     var pendingSavedFood by remember { mutableStateOf<SavedFoodEntity?>(null) }
@@ -1509,6 +1526,7 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
     var editingSavedFood by remember { mutableStateOf<SavedFoodEntity?>(null) }
     var showFullHistory by remember { mutableStateOf(false) }
     val activity = LocalActivity.current ?: return
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val scanner = remember {
         val options = GmsBarcodeScannerOptions.Builder()
@@ -1516,6 +1534,70 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
             .enableAutoZoom()
             .build()
         GmsBarcodeScanning.getClient(activity, options)
+    }
+    val estimateFromUri: (android.net.Uri) -> Unit = { uri ->
+        scope.launch {
+            estimatingPhoto = true
+            message = null
+            photoPreview = null
+            runCatching {
+                val bytes = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: error("Could not read photo")
+                }
+                photoPreview = withContext(Dispatchers.IO) {
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                }
+                val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+                viewModel.estimateFoodFromPhoto(settings.geminiApiKey, bytes, mime).getOrThrow()
+            }.onSuccess {
+                photoEstimate = it
+            }.onFailure {
+                photoPreview = null
+                message = it.message ?: "Photo estimate failed"
+            }
+            estimatingPhoto = false
+        }
+    }
+    val foodPhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        uri?.let(estimateFromUri)
+    }
+    val takeFoodPhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        if (saved) cameraCaptureUri?.let(estimateFromUri) else message = "Camera capture cancelled"
+    }
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            runCatching {
+                val file = File(context.cacheDir, "food_capture_${System.currentTimeMillis()}.jpg")
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+                cameraCaptureUri = uri
+                takeFoodPhoto.launch(uri)
+            }.onFailure { message = it.message ?: "Camera unavailable" }
+        } else {
+            message = "Camera permission is required to take a meal photo"
+        }
+    }
+    val requireGeminiKey: () -> Boolean = {
+        if (settings.geminiApiKey.isBlank()) {
+            message = "Add a Gemini API key in Settings first"
+            false
+        } else true
+    }
+    val launchFoodCamera = {
+        if (requireGeminiKey()) {
+            when {
+                ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                    PackageManager.PERMISSION_GRANTED -> {
+                    runCatching {
+                        val file = File(context.cacheDir, "food_capture_${System.currentTimeMillis()}.jpg")
+                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+                        cameraCaptureUri = uri
+                        takeFoodPhoto.launch(uri)
+                    }.onFailure { message = it.message ?: "Camera unavailable" }
+                }
+                else -> cameraPermission.launch(Manifest.permission.CAMERA)
+            }
+        }
     }
 
     Page(
@@ -1556,6 +1638,41 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
             ) { Icon(Icons.Outlined.QrCodeScanner, null); Spacer(Modifier.width(8.dp)); Text("Scan barcode") }
+            if (estimatingPhoto) {
+                Text("Estimating macros…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = launchFoodCamera,
+                    enabled = !estimatingPhoto,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                ) {
+                    Icon(Icons.Outlined.PhotoCamera, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Camera", fontSize = 14.sp)
+                }
+                Button(
+                    onClick = {
+                        if (requireGeminiKey()) {
+                            foodPhotoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        }
+                    },
+                    enabled = !estimatingPhoto,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                ) {
+                    Icon(Icons.Outlined.Image, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Gallery", fontSize = 14.sp)
+                }
+            }
             if (savedFoods.isNotEmpty()) {
                 Text("QUICK ADD", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 JournalCard {
@@ -1584,7 +1701,7 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
                 }
             }
             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            if (foods.isEmpty()) EmptyState("No food logged", "Add manually or scan a packaged food.")
+            if (foods.isEmpty()) EmptyState("No food logged", "Add manually, scan a barcode, or estimate from a photo.")
             else Text("RECENT FOOD", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val foodDays = foods.groupBy { it.consumedOn }.toList()
             foodDays.take(if (showFullHistory) foodDays.size else 2).forEach { (date, entries) ->
@@ -1615,6 +1732,18 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
     scannedProduct?.let { product ->
         FoodDialog(product = product, onDismiss = { scannedProduct = null }) { food, save ->
             viewModel.addFood(food, save); scannedProduct = null
+        }
+    }
+    photoEstimate?.let { estimate ->
+        FoodDialog(
+            product = null,
+            estimate = estimate,
+            photoPreview = photoPreview,
+            onDismiss = { photoEstimate = null; photoPreview = null },
+        ) { food, save ->
+            viewModel.addFood(food, save)
+            photoEstimate = null
+            photoPreview = null
         }
     }
     editingFood?.let { value ->
@@ -1730,6 +1859,8 @@ private fun SettingsScreen(
     onThemeModeChange: (ThemeMode) -> Unit,
     onBack: () -> Unit,
     onGoals: () -> Unit,
+    onGeminiKey: () -> Unit,
+    geminiKeyConfigured: Boolean,
     onHealthSync: () -> Unit,
     healthConnectAutoSync: Boolean,
     onHealthConnectAutoSync: (Boolean) -> Unit,
@@ -1768,6 +1899,15 @@ private fun SettingsScreen(
                     }
                 }
                 SettingsActionRow("Goals & units", "Weight, measurements, nutrition, and rest timer", onGoals)
+            }
+        }
+        item {
+            SettingsSection("FOOD PHOTO") {
+                SettingsActionRow(
+                    "Gemini API key",
+                    if (geminiKeyConfigured) "Configured · used only for photo estimates" else "Required to estimate macros from a meal photo",
+                    onGeminiKey,
+                )
             }
         }
         item {
@@ -1814,6 +1954,47 @@ private fun SettingsActionRow(title: String, subtitle: String, onClick: () -> Un
         Icon(Icons.Outlined.ArrowOutward, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+}
+
+@Composable
+private fun GeminiKeySheet(settings: AppSettings, onDismiss: () -> Unit, onSave: (AppSettings) -> Unit) {
+    var apiKey by remember(settings) { mutableStateOf(settings.geminiApiKey) }
+    var reveal by remember { mutableStateOf(false) }
+    FormSheet(
+        title = "Gemini API key",
+        description = "Your key stays on this device. Meal photos are sent to Google Gemini only when you tap Estimate from photo.",
+        primaryLabel = "Save key",
+        primaryEnabled = true,
+        onPrimary = { onSave(settings.copy(geminiApiKey = apiKey.trim())) },
+        onDismiss = onDismiss,
+    ) {
+        OutlinedTextField(
+            value = apiKey,
+            onValueChange = { apiKey = it },
+            label = { Text("API key") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
+            shape = RoundedCornerShape(8.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                focusedBorderColor = Clay,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+            ),
+            trailingIcon = {
+                TextButton(onClick = { reveal = !reveal }) { Text(if (reveal) "Hide" else "Show") }
+            },
+        )
+        TextButton(onClick = { apiKey = "" }, enabled = apiKey.isNotBlank()) {
+            Text("Clear key")
+        }
+        Text(
+            "Create a key at aistudio.google.com. Prefer a key with low quota and no billing surprises.",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable
@@ -2067,17 +2248,55 @@ private fun MeasurementDialog(settings: AppSettings, onDismiss: () -> Unit, onSa
 }
 
 @Composable
-private fun FoodDialog(product: BarcodeProductEntity?, entry: FoodEntryEntity? = null, onDismiss: () -> Unit, onSave: (FoodEntryEntity, Boolean) -> Unit) {
+private fun FoodDialog(
+    product: BarcodeProductEntity?,
+    entry: FoodEntryEntity? = null,
+    estimate: FoodPhotoEstimate? = null,
+    photoPreview: ImageBitmap? = null,
+    onDismiss: () -> Unit,
+    onSave: (FoodEntryEntity, Boolean) -> Unit,
+) {
     val defaultServing = product?.servingG ?: 100.0
-    var name by remember(product, entry) { mutableStateOf(entry?.name ?: product?.name.orEmpty()) }
+    var name by remember(product, entry, estimate) {
+        mutableStateOf(entry?.name ?: estimate?.name ?: product?.name.orEmpty())
+    }
     var serving by remember(product) { mutableStateOf(defaultServing.pretty()) }
-    var calories by remember(product, entry) { mutableStateOf(entry?.calories?.pretty() ?: product?.caloriesPer100g?.times(defaultServing / 100)?.pretty().orEmpty()) }
-    var protein by remember(product, entry) { mutableStateOf(entry?.proteinG?.pretty() ?: product?.proteinPer100g?.times(defaultServing / 100)?.pretty().orEmpty()) }
-    var carbs by remember(product, entry) { mutableStateOf(entry?.carbsG?.pretty() ?: product?.carbsPer100g?.times(defaultServing / 100)?.pretty().orEmpty()) }
-    var fat by remember(product, entry) { mutableStateOf(entry?.fatG?.pretty() ?: product?.fatPer100g?.times(defaultServing / 100)?.pretty().orEmpty()) }
+    var calories by remember(product, entry, estimate) {
+        mutableStateOf(
+            entry?.calories?.pretty()
+                ?: estimate?.calories?.pretty()
+                ?: product?.caloriesPer100g?.times(defaultServing / 100)?.pretty().orEmpty(),
+        )
+    }
+    var protein by remember(product, entry, estimate) {
+        mutableStateOf(
+            entry?.proteinG?.pretty()
+                ?: estimate?.proteinG?.pretty()
+                ?: product?.proteinPer100g?.times(defaultServing / 100)?.pretty().orEmpty(),
+        )
+    }
+    var carbs by remember(product, entry, estimate) {
+        mutableStateOf(
+            entry?.carbsG?.pretty()
+                ?: estimate?.carbsG?.pretty()
+                ?: product?.carbsPer100g?.times(defaultServing / 100)?.pretty().orEmpty(),
+        )
+    }
+    var fat by remember(product, entry, estimate) {
+        mutableStateOf(
+            entry?.fatG?.pretty()
+                ?: estimate?.fatG?.pretty()
+                ?: product?.fatPer100g?.times(defaultServing / 100)?.pretty().orEmpty(),
+        )
+    }
     var date by remember(entry) { mutableStateOf(entry?.consumedOn ?: today()) }
     var saveForReuse by remember(entry) { mutableStateOf(entry == null) }
-    var showMoreMacros by remember { mutableStateOf(false) }
+    var showMoreMacros by remember(estimate, entry) {
+        mutableStateOf(
+            estimate?.carbsG != null || estimate?.fatG != null ||
+                entry?.carbsG != null || entry?.fatG != null,
+        )
+    }
     val macros = { Macros(calories.toDoubleOrNull(), protein.toDoubleOrNull(), carbs.toDoubleOrNull(), fat.toDoubleOrNull()) }
     val setMacros: (Macros) -> Unit = { scaled ->
         calories = scaled.calories?.pretty().orEmpty()
@@ -2086,8 +2305,17 @@ private fun FoodDialog(product: BarcodeProductEntity?, entry: FoodEntryEntity? =
         fat = scaled.fatG?.pretty().orEmpty()
     }
     FormSheet(
-        title = if (entry != null) "Edit food" else if (product == null) "Log food" else "Review scanned food",
-        description = if (product == null) "Add food and its macros." else "Check the serving and nutrition before saving.",
+        title = when {
+            entry != null -> "Edit food"
+            estimate != null -> "Review photo estimate"
+            product == null -> "Log food"
+            else -> "Review scanned food"
+        },
+        description = when {
+            estimate != null -> "Gemini estimates are rough. Check serving size and macros before saving."
+            product == null -> "Add food and its macros."
+            else -> "Check the serving and nutrition before saving."
+        },
         primaryLabel = if (entry == null) "Add food" else "Save changes",
         primaryEnabled = name.isNotBlank(),
         onPrimary = {
@@ -2096,6 +2324,17 @@ private fun FoodDialog(product: BarcodeProductEntity?, entry: FoodEntryEntity? =
         },
         onDismiss = onDismiss,
     ) {
+            photoPreview?.let { preview ->
+                Image(
+                    bitmap = preview,
+                    contentDescription = "Meal photo",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Crop,
+                )
+            }
             AppField(name, { name = it }, "Food")
             DateField(date) { date = it }
             if (product != null) AppField(serving, { value ->

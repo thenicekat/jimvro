@@ -12,12 +12,15 @@ Native, local-first gym diary built with Kotlin and Jetpack Compose.
 - Device-locked progress-photo timeline and comparison
 - Manual food and macro logging
 - On-device barcode scanning with Open Food Facts product lookup
-- Room/SQLite storage with no account, server, or AI dependency
+- Optional meal-photo macro estimates via your own Gemini API key
+- Room/SQLite storage with no account or Jimvro server
 - Light and dark themes following device settings
 
 All diary data remains in app database on device. Barcode recognition happens
 on device; fetching a product that is not already cached requires internet.
-Scanned products are reviewed before they are saved.
+Scanned products and photo estimates are reviewed before they are saved.
+Photo estimates require an optional Gemini API key you enter in Settings;
+the meal photo is then sent to Google Gemini for that request only.
 
 ## Requirements
 
@@ -50,8 +53,10 @@ database migrations.
 
 See the full [Privacy Policy](PRIVACY.md).
 
-Android cloud backup is disabled. App requests internet access only for product
-lookup and Google Play services barcode scanner delivery. No API key is stored
-in the app.
+Android cloud backup is disabled. App requests internet access for product
+lookup, optional Gemini photo estimates, and Google Play services barcode
+scanner delivery. Any Gemini API key you enter is stored only in local app
+preferences.
 
 Product data is provided by [Open Food Facts](https://world.openfoodfacts.org/).
+Photo estimates use [Google Gemini](https://ai.google.dev/) with your own key.

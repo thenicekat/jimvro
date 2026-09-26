@@ -267,6 +267,9 @@ class JimvroRepository(private val database: JimvroDatabase) {
         return database.exerciseDao().findByName(name) ?: ExerciseEntity(id = id, name = name, muscleGroup = muscleGroup)
     }
 
+    suspend fun estimateFoodFromPhoto(apiKey: String, imageBytes: ByteArray, mimeType: String = "image/jpeg") =
+        requestFoodPhotoEstimate(apiKey, imageBytes, mimeType)
+
     suspend fun lookupBarcode(rawCode: String): Result<BarcodeProductEntity> = withContext(Dispatchers.IO) {
         runCatching {
             val barcode = rawCode.filter(Char::isDigit)

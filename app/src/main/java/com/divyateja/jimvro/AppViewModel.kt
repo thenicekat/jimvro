@@ -84,6 +84,8 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     fun updateSavedFood(value: SavedFoodEntity) = viewModelScope.launch { repository.updateSavedFood(value) }
     fun deleteSavedFood(value: SavedFoodEntity) = viewModelScope.launch { repository.deleteSavedFood(value) }
     suspend fun lookupBarcode(code: String) = repository.lookupBarcode(code)
+    suspend fun estimateFoodFromPhoto(apiKey: String, imageBytes: ByteArray, mimeType: String = "image/jpeg") =
+        repository.estimateFoodFromPhoto(apiKey, imageBytes, mimeType)
     suspend fun backupDatabase(output: OutputStream) = repository.backupDatabase(output)
     suspend fun restoreDatabase(input: InputStream) = repository.restoreDatabase(input)
 

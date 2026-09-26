@@ -36,6 +36,7 @@ class MainActivity : FragmentActivity() {
             goalWeightKg = preferences.getString("goal_weight_kg", null)?.toDoubleOrNull(),
             weeklyTrainingTarget = preferences.getInt("weekly_training_target", 4),
             healthConnectAutoSync = preferences.getBoolean("health_connect_auto_sync", false),
+            geminiApiKey = preferences.getString("gemini_api_key", "") ?: "",
         )
         ProteinReminderScheduler.sync(this, initialSettings)
         setContent {
@@ -69,6 +70,7 @@ class MainActivity : FragmentActivity() {
                         .putString("goal_weight_kg", value.goalWeightKg?.toString())
                         .putInt("weekly_training_target", value.weeklyTrainingTarget)
                         .putBoolean("health_connect_auto_sync", value.healthConnectAutoSync)
+                        .putString("gemini_api_key", value.geminiApiKey)
                         .apply()
                     ProteinReminderScheduler.sync(this, value)
                 }
