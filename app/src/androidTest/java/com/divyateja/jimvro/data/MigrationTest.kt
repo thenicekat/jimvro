@@ -5,6 +5,7 @@ import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -106,6 +107,33 @@ class MigrationTest {
             while (cursor.moveToNext()) columns += cursor.getString(cursor.getColumnIndexOrThrow("name"))
         }
         assertTrue(columns.containsAll(listOf("skeletalMuscleKg", "bodyFatMassKg", "basalMetabolicRateKcal", "inBodyScore", "visceralFatLevel", "sourceId")))
+        migrated.close()
+        context.deleteDatabase(name)
+    }
+
+    @Test fun migration7To8PreservesLegacyLoggedSets() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "migration-7-8-test"
+        context.deleteDatabase(name)
+        val factory = FrameworkSQLiteOpenHelperFactory()
+        factory.create(SupportSQLiteOpenHelper.Configuration.builder(context).name(name).callback(object : SupportSQLiteOpenHelper.Callback(7) {
+            override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE workout_sets (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, workoutId INTEGER NOT NULL, exerciseId INTEGER NOT NULL, setNumber INTEGER NOT NULL, reps INTEGER, weightKg REAL, rpe REAL, setType TEXT NOT NULL, supersetGroup INTEGER, targetRepLow INTEGER, targetRepHigh INTEGER)")
+                db.execSQL("INSERT INTO workout_sets (workoutId, exerciseId, setNumber, setType, reps) VALUES (1, 1, 1, 'working', 8)")
+                db.execSQL("INSERT INTO workout_sets (workoutId, exerciseId, setNumber, setType) VALUES (1, 1, 2, 'working')")
+            }
+            override fun onUpgrade(db: androidx.sqlite.db.SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+        }).build()).writableDatabase.close()
+        val migrated = factory.create(SupportSQLiteOpenHelper.Configuration.builder(context).name(name).callback(object : SupportSQLiteOpenHelper.Callback(8) {
+            override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) = Unit
+            override fun onUpgrade(db: androidx.sqlite.db.SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = JimvroDatabase.MIGRATION_7_8.migrate(db)
+        }).build())
+        migrated.writableDatabase.query("SELECT isCompleted FROM workout_sets ORDER BY id").use { cursor ->
+            assertTrue(cursor.moveToNext())
+            assertEquals(1, cursor.getInt(0))
+            assertTrue(cursor.moveToNext())
+            assertEquals(0, cursor.getInt(0))
+        }
         migrated.close()
         context.deleteDatabase(name)
     }

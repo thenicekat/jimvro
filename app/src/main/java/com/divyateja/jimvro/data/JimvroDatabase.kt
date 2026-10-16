@@ -96,6 +96,7 @@ data class WorkoutSetEntity(
     val supersetGroup: Int? = null,
     val targetRepLow: Int? = null,
     val targetRepHigh: Int? = null,
+    @ColumnInfo(defaultValue = "0") val isCompleted: Boolean = false,
 )
 
 @Entity(tableName = "saved_foods", indices = [Index("name")])
@@ -196,6 +197,7 @@ data class WorkoutSetDetail(
     val supersetGroup: Int?,
     val targetRepLow: Int?,
     val targetRepHigh: Int?,
+    val isCompleted: Boolean,
 )
 
 data class PreviousSet(
@@ -281,8 +283,10 @@ interface MeasurementDao {
 @Dao
 interface WorkoutDao {
     @Query(
-        """SELECT w.id, w.performedOn, w.name, COUNT(s.id) AS setCount, w.createdAt, w.finishedAt,
-            COALESCE(SUM(COALESCE(s.reps, 0) * COALESCE(s.weightKg, 0)), 0.0) AS volumeKg
+        """SELECT w.id, w.performedOn, w.name,
+            COALESCE(SUM(CASE WHEN s.isCompleted = 1 THEN 1 ELSE 0 END), 0) AS setCount,
+            w.createdAt, w.finishedAt,
+            COALESCE(SUM(CASE WHEN s.isCompleted = 1 THEN COALESCE(s.reps, 0) * COALESCE(s.weightKg, 0) ELSE 0 END), 0.0) AS volumeKg
             FROM workouts w LEFT JOIN workout_sets s ON s.workoutId = w.id
             GROUP BY w.id ORDER BY w.performedOn DESC, w.createdAt DESC""",
     )
@@ -293,11 +297,13 @@ interface WorkoutDao {
 
     @Query("SELECT * FROM workouts WHERE id = :id")
     fun observeWorkout(id: Long): Flow<WorkoutEntity?>
+    @Query("SELECT performedOn FROM workouts WHERE id = :id")
+    suspend fun workoutDate(id: Long): String?
 
     @Query(
         """SELECT s.id, s.workoutId, s.exerciseId, e.name AS exerciseName,
             e.muscleGroup, s.setNumber, s.reps, s.weightKg, s.rpe, s.setType, s.supersetGroup,
-            s.targetRepLow, s.targetRepHigh
+            s.targetRepLow, s.targetRepHigh, s.isCompleted
             FROM workout_sets s INNER JOIN exercises e ON e.id = s.exerciseId
             WHERE s.workoutId = :workoutId ORDER BY s.id""",
     )
@@ -309,10 +315,10 @@ interface WorkoutDao {
         WHERE s.exerciseId = :exerciseId AND s.workoutId = (
           SELECT s2.workoutId FROM workout_sets s2 INNER JOIN workouts w2 ON w2.id = s2.workoutId
           WHERE s2.exerciseId = :exerciseId AND s2.workoutId != :workoutId
-            AND (s2.reps IS NOT NULL OR s2.weightKg IS NOT NULL)
+            AND s2.isCompleted = 1
             AND w2.performedOn <= (SELECT performedOn FROM workouts WHERE id = :workoutId)
           ORDER BY w2.performedOn DESC, w2.id DESC LIMIT 1
-        ) AND (s.reps IS NOT NULL OR s.weightKg IS NOT NULL) ORDER BY s.setNumber""",
+        ) AND s.isCompleted = 1 ORDER BY s.setNumber""",
     )
     fun observePreviousSets(workoutId: Long, exerciseId: Long): Flow<List<PreviousSet>>
 
@@ -321,9 +327,9 @@ interface WorkoutDao {
         s.reps, w.performedOn, w.id AS workoutId
         FROM workout_sets s INNER JOIN workouts w ON w.id = s.workoutId
         INNER JOIN exercises e ON e.id = s.exerciseId
-        WHERE s.weightKg IS NOT NULL AND s.id = (
+        WHERE s.isCompleted = 1 AND s.weightKg IS NOT NULL AND s.id = (
           SELECT s2.id FROM workout_sets s2 INNER JOIN workouts w2 ON w2.id = s2.workoutId
-          WHERE s2.exerciseId = s.exerciseId AND s2.weightKg IS NOT NULL
+          WHERE s2.exerciseId = s.exerciseId AND s2.isCompleted = 1 AND s2.weightKg IS NOT NULL
           ORDER BY s2.weightKg DESC, w2.performedOn DESC, COALESCE(s2.reps, 0) DESC LIMIT 1
         ) ORDER BY e.name""",
     )
@@ -331,18 +337,22 @@ interface WorkoutDao {
 
     @Query(
         """SELECT w.performedOn,
-        COALESCE(SUM(COALESCE(s.reps, 0) * COALESCE(s.weightKg, 0)), 0.0) AS volumeKg,
-        MAX(s.weightKg) AS maxWeightKg
+        COALESCE(SUM(CASE WHEN s.isCompleted = 1 THEN COALESCE(s.reps, 0) * COALESCE(s.weightKg, 0) ELSE 0 END), 0.0) AS volumeKg,
+        MAX(CASE WHEN s.isCompleted = 1 THEN s.weightKg END) AS maxWeightKg
         FROM workout_sets s INNER JOIN workouts w ON w.id = s.workoutId
-        WHERE s.exerciseId = :exerciseId
+        WHERE s.exerciseId = :exerciseId AND s.isCompleted = 1
         GROUP BY s.workoutId ORDER BY w.performedOn, w.id""",
     )
     fun observeExerciseProgress(exerciseId: Long): Flow<List<ExerciseProgressPoint>>
 
     @Insert suspend fun insertWorkout(value: WorkoutEntity): Long
     @Insert suspend fun insertSet(value: WorkoutSetEntity): Long
-    @Query("UPDATE workout_sets SET reps = :reps, weightKg = :weightKg, rpe = :rpe WHERE id = :setId")
+    @Query("UPDATE workout_sets SET reps = :reps, weightKg = :weightKg, rpe = :rpe, isCompleted = 0 WHERE id = :setId")
     suspend fun updateSet(setId: Long, reps: Int?, weightKg: Double?, rpe: Double?)
+    @Query("UPDATE workout_sets SET reps = :reps, weightKg = :weightKg, isCompleted = 1 WHERE id = :setId")
+    suspend fun completeSet(setId: Long, reps: Int, weightKg: Double?)
+    @Query("UPDATE workout_sets SET isCompleted = 0 WHERE id = :setId")
+    suspend fun uncompleteSet(setId: Long)
     @Query("UPDATE workout_sets SET setType = :setType WHERE id = :setId") suspend fun updateSetType(setId: Long, setType: String)
     @Query("UPDATE workout_sets SET supersetGroup = :groupId WHERE exerciseId IN (:exerciseIds) AND workoutId = :workoutId")
     suspend fun setSuperset(workoutId: Long, exerciseIds: List<Long>, groupId: Int?)
@@ -355,8 +365,17 @@ interface WorkoutDao {
     @Query("UPDATE workout_sets SET exerciseId = :exerciseId, setNumber = :setNumber WHERE id = :id")
     suspend fun moveSet(id: Long, exerciseId: Long, setNumber: Int)
 
-    @Query("SELECT MAX(weightKg) FROM workout_sets WHERE exerciseId = :exerciseId AND id != :setId AND setType = 'working'")
+    @Query("SELECT MAX(weightKg) FROM workout_sets WHERE exerciseId = :exerciseId AND id != :setId AND isCompleted = 1 AND setType = 'working'")
     suspend fun maxPriorWorkingWeight(exerciseId: Long, setId: Long): Double?
+
+    @Query("""SELECT s.* FROM workout_sets s INNER JOIN workouts w ON w.id = s.workoutId
+        WHERE s.exerciseId = :exerciseId AND s.isCompleted = 1 AND w.performedOn <= :date
+          AND s.workoutId = (SELECT s2.workoutId FROM workout_sets s2
+            INNER JOIN workouts w2 ON w2.id = s2.workoutId
+            WHERE s2.exerciseId = :exerciseId AND s2.isCompleted = 1 AND w2.performedOn <= :date
+            ORDER BY w2.performedOn DESC, w2.id DESC LIMIT 1)
+        ORDER BY s.setNumber""")
+    suspend fun latestCompletedSets(exerciseId: Long, date: String): List<WorkoutSetEntity>
 
     @Query("DELETE FROM workout_sets WHERE id = :setId")
     suspend fun deleteSet(setId: Long)
@@ -370,7 +389,7 @@ interface WorkoutDao {
         INNER JOIN exercises e ON e.id = s.exerciseId
         INNER JOIN workouts w ON w.id = s.workoutId
         WHERE w.performedOn >= :weekStart AND w.performedOn <= :weekEnd
-          AND s.setType = 'working' AND (s.reps IS NOT NULL OR s.weightKg IS NOT NULL)
+          AND s.setType = 'working' AND s.isCompleted = 1
         GROUP BY e.muscleGroup ORDER BY volumeKg DESC""",
     )
     fun observeWeeklyMuscleSets(weekStart: String, weekEnd: String): Flow<List<WeeklyMuscleSet>>
@@ -549,7 +568,7 @@ interface FoodDao {
         BarcodeProductEntity::class,
         ProgressPhotoEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class JimvroDatabase : RoomDatabase() {
@@ -563,7 +582,7 @@ abstract class JimvroDatabase : RoomDatabase() {
     companion object {
         fun create(context: Context): JimvroDatabase =
             Room.databaseBuilder(context, JimvroDatabase::class.java, "jimvro.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                 .build()
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -618,6 +637,12 @@ abstract class JimvroDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE measurements ADD COLUMN visceralFatLevel REAL")
                 db.execSQL("ALTER TABLE measurements ADD COLUMN sourceId TEXT")
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_measurements_sourceId ON measurements(sourceId)")
+            }
+        }
+        internal val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE workout_sets ADD COLUMN isCompleted INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE workout_sets SET isCompleted = 1 WHERE reps IS NOT NULL OR weightKg IS NOT NULL")
             }
         }
     }

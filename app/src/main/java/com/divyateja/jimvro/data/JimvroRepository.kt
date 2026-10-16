@@ -59,10 +59,25 @@ class JimvroRepository(private val database: JimvroDatabase) {
     suspend fun createWorkout(value: WorkoutEntity, sets: List<WorkoutSetEntity>) =
         database.workoutDao().createWorkout(value, sets)
     suspend fun deleteWorkout(id: Long) = database.workoutDao().deleteWorkout(id)
-    suspend fun appendSet(workoutId: Long, exerciseId: Long, reps: Int? = null, weightKg: Double? = null) =
-        database.workoutDao().appendSet(workoutId, exerciseId, reps, weightKg)
+    suspend fun appendSet(
+        workoutId: Long,
+        exerciseId: Long,
+        reps: Int? = null,
+        weightKg: Double? = null,
+        prefillFromHistory: Boolean = false,
+    ): Long {
+        val prior = if (prefillFromHistory && reps == null && weightKg == null) {
+            database.workoutDao().workoutDate(workoutId)?.let { date ->
+                database.workoutDao().latestCompletedSets(exerciseId, date).firstOrNull()
+            }
+        } else null
+        return database.workoutDao().appendSet(workoutId, exerciseId, reps ?: prior?.reps, weightKg ?: prior?.weightKg)
+    }
     suspend fun updateSet(setId: Long, reps: Int?, weightKg: Double?, rpe: Double? = null) =
         database.workoutDao().updateSet(setId, reps, weightKg, rpe)
+    suspend fun completeSet(setId: Long, reps: Int, weightKg: Double?) =
+        database.workoutDao().completeSet(setId, reps, weightKg)
+    suspend fun uncompleteSet(setId: Long) = database.workoutDao().uncompleteSet(setId)
     suspend fun updateSetType(setId: Long, setType: String) = database.workoutDao().updateSetType(setId, setType)
     suspend fun finishWorkout(workoutId: Long) = database.workoutDao().finishWorkout(workoutId, System.currentTimeMillis())
     suspend fun updateWorkoutDuration(workoutId: Long, createdAt: Long, durationSeconds: Long) =
@@ -109,14 +124,25 @@ class JimvroRepository(private val database: JimvroDatabase) {
     suspend fun deleteTemplateLine(id: Long) = database.templateDao().deleteLine(id)
     suspend fun updateTemplateLine(id: Long, sets: Int, low: Int?, high: Int?) = database.templateDao().updateLine(id, sets, low, high)
     suspend fun reorderTemplateLines(lines: List<TemplateLine>) = lines.forEachIndexed { index, line -> database.templateDao().updatePosition(line.id, index) }
-    suspend fun startFromTemplate(templateId: Long, date: String): Long {
+    suspend fun startFromTemplate(templateId: Long, date: String): Long = database.withTransaction {
         val template = database.templateDao().template(templateId) ?: error("Template not found")
-        val stubs = database.templateDao().lines(templateId).flatMap { line ->
+        val lines = database.templateDao().lines(templateId)
+        val previous = mutableMapOf<Long, List<WorkoutSetEntity>>()
+        for (line in lines) {
+            if (line.exerciseId !in previous) {
+                previous[line.exerciseId] = database.workoutDao().latestCompletedSets(line.exerciseId, date)
+            }
+        }
+        val stubs = lines.flatMap { line ->
             (1..line.targetSets).map { number ->
+                val prior = previous[line.exerciseId].orEmpty().firstOrNull { it.setNumber == number }
+                    ?: previous[line.exerciseId].orEmpty().lastOrNull()
                 WorkoutSetEntity(
                     workoutId = 0,
                     exerciseId = line.exerciseId,
                     setNumber = number,
+                    reps = prior?.reps ?: line.repLow,
+                    weightKg = prior?.weightKg,
                     setType = line.setType,
                     supersetGroup = line.supersetGroup,
                     targetRepLow = line.repLow,
@@ -124,7 +150,7 @@ class JimvroRepository(private val database: JimvroDatabase) {
                 )
             }
         }
-        return database.workoutDao().createWorkout(WorkoutEntity(performedOn = date, name = template.name), stubs)
+        database.workoutDao().createWorkout(WorkoutEntity(performedOn = date, name = template.name), stubs)
     }
     suspend fun addFood(value: FoodEntryEntity, saveForReuse: Boolean = false) {
         database.foodDao().insert(value)
@@ -244,7 +270,7 @@ class JimvroRepository(private val database: JimvroDatabase) {
                 check(cursor.moveToFirst())
                 cursor.getInt(0)
             }
-            require(version in 1..7) { "Unsupported backup version: $version" }
+            require(version in 1..8) { "Unsupported backup version: $version" }
             val required = setOf("measurements", "workouts", "workout_sets", "food_entries")
             val present = db.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null).use { cursor ->
                 buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) }

@@ -35,9 +35,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowBack
@@ -46,20 +48,25 @@ import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -73,12 +80,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -99,7 +112,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
     val sets by viewModel.workoutSets(workoutId).collectAsStateWithLifecycle(initialValue = emptyList())
     val exercises by viewModel.exercises.collectAsStateWithLifecycle()
     val groups = sets.groupBy { it.exerciseId }.values.toList()
-    var index by remember { mutableIntStateOf(0) }
+    val pagerState = rememberPagerState(pageCount = { groups.size.coerceAtLeast(1) })
     var showAddExercise by remember { mutableStateOf(false) }
     var showSummary by remember { mutableStateOf(false) }
     var showSaveTemplate by remember { mutableStateOf(false) }
@@ -112,16 +125,26 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
     var restActive by remember { mutableStateOf(false) }
     var prMessage by remember { mutableStateOf<String?>(null) }
     var announcedPrSets by remember { mutableStateOf(emptySet<Long>()) }
+    var pendingExerciseId by remember { mutableStateOf<Long?>(null) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val context = LocalContext.current
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
-    val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val goToExercise: (Int) -> Unit = { target ->
-        index = target.coerceIn(0, (groups.size - 1).coerceAtLeast(0))
-        scope.launch { listState.scrollToItem(if (restRemaining > 0) 2 else 1) }
+        scope.launch { pagerState.animateScrollToPage(target.coerceIn(0, (groups.size - 1).coerceAtLeast(0))) }
     }
-    LaunchedEffect(groups.size) { index = index.coerceIn(0, (groups.size - 1).coerceAtLeast(0)) }
+    LaunchedEffect(groups, pendingExerciseId) {
+        val target = groups.indexOfFirst { it.first().exerciseId == pendingExerciseId }
+        if (target >= 0) {
+            pagerState.scrollToPage(target)
+            pendingExerciseId = null
+        }
+    }
+    LaunchedEffect(groups.size) {
+        if (groups.isNotEmpty() && pagerState.currentPage > groups.lastIndex) {
+            pagerState.scrollToPage(groups.lastIndex)
+        }
+    }
     LaunchedEffect(restRemaining, restActive) {
         if (restRemaining > 0) { delay(1_000); restRemaining-- }
         else if (restActive) { restActive = false; alertRestComplete(context) }
@@ -136,16 +159,22 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
         }
     }
 
-    val totalVolume = sets.sumOf { (it.reps ?: 0) * (it.weightKg ?: 0.0) }
-    val completed = sets.count { it.reps != null || it.weightKg != null }
+    val totalVolume = sets.filter { it.isCompleted }.sumOf { (it.reps ?: 0) * (it.weightKg ?: 0.0) }
+    val completed = sets.count { it.isCompleted }
     val finished = workout?.finishedAt != null
     val canEdit = !finished || editingFinished
     val elapsedSeconds = workout?.let { ((it.finishedAt ?: now) - it.createdAt).coerceAtLeast(0) / 1_000 } ?: 0
     val shareWorkout = { shareWorkoutImage(context, workout?.name ?: "Workout", formatDateForDisplay(workout?.performedOn.orEmpty()), elapsedSeconds, completed, totalVolume, groups) }
 
     Box(Modifier.fillMaxSize()) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            key = { page -> groups.getOrNull(page)?.firstOrNull()?.exerciseId ?: -1L },
+        ) { page ->
+        val current = groups.getOrNull(page)
         LazyColumn(
-            state = listState,
+            state = rememberLazyListState(),
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = if (finished) 20.dp else 84.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -215,22 +244,21 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
             }
         }
 
-        if (groups.isEmpty()) {
+        if (current == null) {
             item {
                 EmptyWorkoutCard { showAddExercise = true }
             }
         } else {
-            val current = groups[index]
             item {
                 ExerciseHeader(
                     name = current.first().exerciseName,
                     muscleGroup = current.first().muscleGroup,
-                    position = index + 1,
+                    position = page + 1,
                     count = groups.size,
-                    canGoBack = index > 0,
-                    canGoForward = index < groups.lastIndex,
-                    onBack = { goToExercise(index - 1) },
-                    onForward = { goToExercise(index + 1) },
+                    canGoBack = page > 0,
+                    canGoForward = page < groups.lastIndex,
+                    onBack = { goToExercise(page - 1) },
+                    onForward = { goToExercise(page + 1) },
                     onEditMuscleGroup = { editingMuscleGroup = current.first().exerciseId to current.first().muscleGroup },
                 )
             }
@@ -243,6 +271,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                     targetRepHigh = current.first().targetRepHigh,
                 )
             }
+            val nextSetId = current.firstOrNull { !it.isCompleted }?.id
             current.forEachIndexed { rowIndex, set ->
                 item(key = set.id) {
                     TrackerSetRow(
@@ -250,13 +279,17 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                         settings = settings,
                         showLabels = rowIndex == 0,
                         readOnly = !canEdit,
+                        isNext = canEdit && set.id == nextSetId,
                         onUpdate = { reps, weight -> viewModel.updateSet(set.id, reps, weight, set.rpe) },
                         onSetType = { viewModel.updateSetType(set.id, it) },
                         onComplete = { reps, weightKg ->
-                            restRemaining = settings.restSeconds
-                            restActive = true
+                            viewModel.completeSet(set.id, reps, weightKg)
+                            if (!finished) {
+                                restRemaining = settings.restSeconds
+                                restActive = true
+                            }
                             if (
-                                set.setType == "working" && reps != null && weightKg != null &&
+                                set.setType == "working" && weightKg != null &&
                                 set.id !in announcedPrSets
                             ) {
                                 scope.launch {
@@ -266,8 +299,9 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                                     }
                                 }
                             }
-                            if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            if (!finished && Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                         },
+                        onUncomplete = { viewModel.uncompleteSet(set.id) },
                         onDelete = { pendingSetDelete = set.id },
                     )
                 }
@@ -288,33 +322,19 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                             onClick = { viewModel.appendSet(workoutId, last.exerciseId, last.reps, last.weightKg) },
                             modifier = Modifier.weight(1f).height(44.dp),
                             shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.onSurface, contentColor = MaterialTheme.colorScheme.surface),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
                         ) { Text("Repeat last", fontWeight = FontWeight.Normal) }
                     }
                 }
             }
-            item {
-                HorizontalDivider()
-                Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("$completed / ${sets.size} sets logged", Modifier.weight(1f), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (index < groups.lastIndex) {
-                        Button(onClick = { goToExercise(index + 1) }, shape = RoundedCornerShape(9.dp)) {
-                            Text("Next exercise")
-                            Icon(Icons.Outlined.ChevronRight, null)
-                        }
-                    } else {
-                        Text("Last exercise", color = Clay, fontSize = 14.sp)
-                    }
-                }
-            }
             if (canEdit) item {
-                if (index < groups.lastIndex) {
+                if (page < groups.lastIndex) {
                     TextButton(
                         onClick = {
                             viewModel.setSuperset(
                                 workoutId,
-                                listOf(current.first().exerciseId, groups[index + 1].first().exerciseId),
-                                index + 1,
+                                listOf(current.first().exerciseId, groups[page + 1].first().exerciseId),
+                                page + 1,
                             )
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -328,6 +348,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
             }
         }
         }
+        }
         if (!finished) Row(
             Modifier
                 .align(Alignment.BottomCenter)
@@ -337,7 +358,17 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("$completed/${sets.size} sets", Modifier.weight(1f), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("$completed/${sets.size} sets", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LinearProgressIndicator(
+                    progress = { if (sets.isEmpty()) 0f else completed.toFloat() / sets.size },
+                    modifier = Modifier.width(96.dp).height(3.dp),
+                    color = MaterialTheme.colorScheme.secondary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    gapSize = 0.dp,
+                    drawStopIndicator = {},
+                )
+            }
             Button(
                 onClick = { viewModel.finishWorkout(workoutId); showSummary = true },
                 enabled = sets.isNotEmpty(),
@@ -356,7 +387,8 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
             onDeleteExercise = viewModel::deleteExercise,
             onDismiss = { showAddExercise = false },
             onAdd = { exerciseId, reps, weight ->
-                viewModel.appendSet(workoutId, exerciseId, reps, weight?.storageWeight(settings))
+                pendingExerciseId = exerciseId
+                viewModel.appendSet(workoutId, exerciseId, reps, weight?.storageWeight(settings), prefillFromHistory = true)
                 showAddExercise = false
             },
         )
@@ -394,7 +426,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
             )
         }
     }
-    pendingSetDelete?.let { id -> ConfirmDeleteDialog("Delete set?", "This set will be removed from workout volume.", { pendingSetDelete = null }) { viewModel.deleteSet(id); pendingSetDelete = null } }
+    pendingSetDelete?.let { id -> ConfirmDeleteDialog("Delete set?", "This set will be removed from the workout.", { pendingSetDelete = null }) { viewModel.deleteSet(id); pendingSetDelete = null } }
     editingMuscleGroup?.let { (exerciseId, current) ->
         MuscleGroupPickerSheet(
             current = current,
@@ -409,7 +441,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
 
 private fun shareWorkoutImage(context: Context, name: String, date: String, seconds: Long, completed: Int, volumeKg: Double, groups: List<List<WorkoutSetDetail>>) {
     val logged = groups.mapNotNull { exerciseSets ->
-        exerciseSets.filter { it.reps != null || it.weightKg != null }.takeIf { it.isNotEmpty() }?.let { sets ->
+        exerciseSets.filter { it.isCompleted }.takeIf { it.isNotEmpty() }?.let { sets ->
             exerciseSets.first().exerciseName to sets.joinToString("  ·  ") { set ->
                 listOfNotNull(set.reps?.let { "$it reps" }, set.weightKg?.let { "$it kg" }).joinToString(" × ")
             }
@@ -482,21 +514,20 @@ private fun ExerciseHeader(
     onForward: () -> Unit,
     onEditMuscleGroup: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Column(Modifier.weight(1f)) {
-            Text("$position OF $count", fontSize = 10.sp, letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(name, fontSize = 21.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal)
-            Row(
-                Modifier.clickable(onClick = onEditMuscleGroup).padding(top = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    muscleGroup.replaceFirstChar(Char::uppercase),
-                    fontSize = 12.sp,
-                    color = Clay,
-                )
-                Icon(Icons.Outlined.Edit, "Edit muscle group", Modifier.size(11.dp), tint = Clay)
+            Text(name, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.clickable(onClick = onEditMuscleGroup).height(40.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(muscleGroup.replaceFirstChar(Char::uppercase), fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
+                    Icon(Icons.Outlined.Edit, "Edit muscle group", Modifier.size(12.dp), tint = MaterialTheme.colorScheme.secondary)
+                }
+                Spacer(Modifier.weight(1f))
+                Text("$position of $count", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         IconButton(onClick = onBack, enabled = canGoBack, modifier = Modifier.size(40.dp)) {
@@ -561,74 +592,121 @@ private fun TrackerSetRow(
     settings: AppSettings,
     showLabels: Boolean,
     readOnly: Boolean,
+    isNext: Boolean,
     onUpdate: (Int?, Double?) -> Unit,
     onSetType: (String) -> Unit,
-    onComplete: (Int?, Double?) -> Unit,
+    onComplete: (Int, Double?) -> Unit,
+    onUncomplete: () -> Unit,
     onDelete: () -> Unit,
 ) {
     var reps by remember(set.id, set.reps) { mutableStateOf(set.reps?.toString().orEmpty()) }
     var weight by remember(set.id, set.weightKg, settings.weightUnit) { mutableStateOf(set.weightKg?.displayWeight(settings)?.prettyTracker().orEmpty()) }
+    var showSetMenu by remember(set.id) { mutableStateOf(false) }
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+            .padding(top = 2.dp, bottom = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-            if (showLabels) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (showLabels) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Spacer(Modifier.width(88.dp))
-                Text("Reps", Modifier.weight(1f), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("${settings.weightUnit}", Modifier.weight(1f), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (!readOnly) Spacer(Modifier.width(32.dp))
+                Text("Reps", Modifier.weight(1f).padding(start = 8.dp), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(settings.weightUnit, Modifier.weight(1f).padding(start = 8.dp), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Done", Modifier.width(48.dp), fontSize = 10.sp, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isNext) 0.64f else 0f), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(set.setNumber.toString().padStart(2, '0'), Modifier.width(24.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val typeLabel = when (set.setType) { "warmup" -> "Warm"; "drop" -> "Drop"; else -> "Work" }
                 if (readOnly) {
-                    Text(typeLabel, Modifier.width(56.dp), fontSize = 10.sp, color = Clay)
-                    Text(reps.ifBlank { "—" }, Modifier.weight(1f).padding(vertical = 12.dp), fontSize = 16.sp)
-                    Text(weight.ifBlank { "—" }, Modifier.weight(1f).padding(vertical = 12.dp), fontSize = 16.sp)
+                    Text(typeLabel, Modifier.width(56.dp), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(reps.ifBlank { "—" }, Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 12.dp), fontSize = 16.sp)
+                    Text(weight.ifBlank { "—" }, Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 12.dp), fontSize = 16.sp)
+                    Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                        if (set.isCompleted) Icon(Icons.Outlined.Check, "Set done", tint = MaterialTheme.colorScheme.secondary)
+                    }
                 } else {
-                    TextButton(
-                        onClick = {
-                            val types = listOf("working", "warmup", "drop")
-                            onSetType(types[(types.indexOf(set.setType) + 1).mod(types.size)])
-                        },
-                        modifier = Modifier.width(56.dp), contentPadding = PaddingValues(horizontal = 0.dp),
-                    ) { Text(typeLabel, fontSize = 10.sp, color = Clay) }
-                    TrackerNumberField(reps, "Reps", Modifier.weight(1f), {
-                        onComplete(reps.toIntOrNull(), weight.toDoubleOrNull()?.storageWeight(settings))
-                    }) { value ->
+                    Box(Modifier.width(56.dp)) {
+                        TextButton(
+                            onClick = { showSetMenu = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            Text(typeLabel, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Icon(Icons.Outlined.KeyboardArrowDown, null, Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        DropdownMenu(expanded = showSetMenu, onDismissRequest = { showSetMenu = false }) {
+                            listOf("working" to "Working", "warmup" to "Warm-up", "drop" to "Drop").forEach { (type, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = { showSetMenu = false; onSetType(type) },
+                                    trailingIcon = { if (set.setType == type) Icon(Icons.Outlined.Check, null) },
+                                )
+                            }
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Delete set", color = MaterialTheme.colorScheme.error) },
+                                onClick = { showSetMenu = false; onDelete() },
+                                leadingIcon = { Icon(Icons.Outlined.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                            )
+                        }
+                    }
+                    TrackerNumberField(reps, "Reps", Modifier.weight(1f)) { value ->
                         reps = value
                         onUpdate(value.toIntOrNull(), weight.toDoubleOrNull()?.storageWeight(settings))
                     }
-                    TrackerNumberField(weight, "Weight", Modifier.weight(1f), {
-                        onComplete(reps.toIntOrNull(), weight.toDoubleOrNull()?.storageWeight(settings))
-                    }) { value ->
+                    TrackerNumberField(weight, "Weight", Modifier.weight(1f)) { value ->
                         weight = value
                         onUpdate(reps.toIntOrNull(), value.toDoubleOrNull()?.storageWeight(settings))
                     }
-                    IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) { Icon(Icons.Outlined.Delete, "Delete set", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Checkbox(
+                        checked = set.isCompleted,
+                        onCheckedChange = { done ->
+                            if (done) reps.toIntOrNull()?.takeIf { it > 0 }?.let { onComplete(it, weight.toDoubleOrNull()?.storageWeight(settings)) }
+                            else onUncomplete()
+                        },
+                        enabled = set.isCompleted || (reps.toIntOrNull() ?: 0) > 0,
+                        modifier = Modifier.size(48.dp).semantics {
+                            contentDescription = if (set.isCompleted) "Undo set ${set.setNumber}" else "Mark set ${set.setNumber} done"
+                        },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = MaterialTheme.colorScheme.secondary,
+                            checkmarkColor = MaterialTheme.colorScheme.onSecondary,
+                            uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    )
                 }
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
     }
 }
 
 @Composable
-private fun TrackerNumberField(value: String, label: String, modifier: Modifier, onDone: () -> Unit, onChange: (String) -> Unit) {
-    OutlinedTextField(
+private fun TrackerNumberField(value: String, label: String, modifier: Modifier, onChange: (String) -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    BasicTextField(
         value = value,
         onValueChange = { if (it.matches(Regex("^\\d*\\.?\\d*$"))) onChange(it) },
-        modifier = modifier.height(56.dp),
-        placeholder = { Text("—") },
+        modifier = modifier
+            .height(48.dp)
+            .onFocusChanged { focused = it.isFocused }
+            .background(MaterialTheme.colorScheme.secondary.copy(alpha = if (focused) 0.12f else 0f), RoundedCornerShape(8.dp))
+            .semantics { contentDescription = label },
+        textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp),
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { if (value.isNotBlank()) onDone() }),
-        shape = RoundedCornerShape(7.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Clay,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),
-        ),
+        cursorBrush = SolidColor(MaterialTheme.colorScheme.secondary),
+        decorationBox = { innerTextField ->
+            Box(Modifier.fillMaxSize().padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
+                if (value.isEmpty()) Text("—", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                innerTextField()
+            }
+        },
     )
 }
 
@@ -646,7 +724,7 @@ private fun AddExerciseSheet(
     var weight by remember { mutableStateOf("") }
     FormSheet(
         title = "Add an exercise",
-        description = "Choose a movement and log the first set.",
+        description = "Choose a movement; set values from your last session fill in when available.",
         primaryLabel = "Add to workout",
         primaryEnabled = selected != null,
         onPrimary = { selected?.let { onAdd(it.id, reps.toIntOrNull(), weight.toDoubleOrNull()) } },

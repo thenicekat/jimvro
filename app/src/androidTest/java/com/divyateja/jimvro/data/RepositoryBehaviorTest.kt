@@ -29,8 +29,8 @@ class RepositoryBehaviorTest {
         val workoutId = repository.createWorkout(
             WorkoutEntity(performedOn = "2026-07-27", name = "Volume test"),
             listOf(
-                WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, setNumber = 1, reps = 8, weightKg = 60.0),
-                WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, setNumber = 2, reps = 10, weightKg = 60.0),
+                WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, setNumber = 1, reps = 8, weightKg = 60.0, isCompleted = true),
+                WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, setNumber = 2, reps = 10, weightKg = 60.0, isCompleted = true),
             ),
         )
 
@@ -66,6 +66,50 @@ class RepositoryBehaviorTest {
         assertEquals(setOf(4), sets.mapNotNull { it.supersetGroup }.toSet())
         assertEquals(setOf(5), sets.filter { it.exerciseId == press.id }.mapNotNull { it.targetRepLow }.toSet())
         assertEquals(setOf(12), sets.filter { it.exerciseId == row.id }.mapNotNull { it.targetRepHigh }.toSet())
+    }
+
+    @Test
+    fun templatePrefillsPreviousSetsWithoutLoggingThemUntilMarkedDone() = withRepository { repository ->
+        val exercise = repository.findOrCreateExercise("Prefilled press")
+        repository.createWorkout(WorkoutEntity(performedOn = "2026-07-18"), listOf(
+            WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, setNumber = 1, reps = 8, weightKg = 50.0, isCompleted = true),
+            WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, setNumber = 2, reps = 9, weightKg = 55.0, isCompleted = true),
+        ))
+        val templateId = repository.createTemplate("Prefill test", listOf(TemplateTarget(exercise.id, 3, 6, 10)))
+
+        val workoutId = repository.startFromTemplate(templateId, "2026-07-20")
+        val sets = repository.workoutSets(workoutId).first()
+        assertEquals(listOf(8, 9, 9), sets.map { it.reps })
+        assertEquals(listOf(50.0, 55.0, 55.0), sets.map { it.weightKg })
+        assertTrue(sets.none { it.isCompleted })
+        assertEquals(0, repository.workouts.first().first { it.id == workoutId }.setCount)
+        assertEquals(0.0, repository.workouts.first().first { it.id == workoutId }.volumeKg, 0.001)
+        assertEquals(1, repository.exerciseProgress(exercise.id).first().size)
+
+        repository.completeSet(sets.first().id, 8, 50.0)
+        assertEquals(1, repository.workouts.first().first { it.id == workoutId }.setCount)
+        assertEquals(400.0, repository.workouts.first().first { it.id == workoutId }.volumeKg, 0.001)
+        repository.uncompleteSet(sets.first().id)
+        assertEquals(0, repository.workouts.first().first { it.id == workoutId }.setCount)
+        repository.completeSet(sets.first().id, 8, 50.0)
+        repository.updateSet(sets.first().id, 10, 52.5)
+        assertFalse(repository.workoutSets(workoutId).first().first().isCompleted)
+    }
+
+    @Test
+    fun addingExercisePrefillsLastCompletedSetWithoutLoggingIt() = withRepository { repository ->
+        val exercise = repository.findOrCreateExercise("Added press")
+        repository.createWorkout(WorkoutEntity(performedOn = "2026-07-18"), listOf(
+            WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, reps = 8, weightKg = 50.0, isCompleted = true),
+        ))
+        val workoutId = repository.addWorkout(WorkoutEntity(performedOn = "2026-07-20"))
+
+        repository.appendSet(workoutId, exercise.id, prefillFromHistory = true)
+        val set = repository.workoutSets(workoutId).first().single()
+        assertEquals(8, set.reps)
+        assertEquals(50.0, set.weightKg!!, 0.001)
+        assertFalse(set.isCompleted)
+        assertEquals(0, repository.workouts.first().first { it.id == workoutId }.setCount)
     }
 
     @Test
@@ -107,11 +151,11 @@ class RepositoryBehaviorTest {
         val exercise = repository.findOrCreateExercise("Previous-set lift")
         val olderId = repository.createWorkout(
             WorkoutEntity(performedOn = "2026-07-18"),
-            listOf(WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, reps = 8, weightKg = 50.0)),
+            listOf(WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, reps = 8, weightKg = 50.0, isCompleted = true)),
         )
         repository.createWorkout(
             WorkoutEntity(performedOn = "2026-07-22"),
-            listOf(WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, reps = 5, weightKg = 70.0)),
+            listOf(WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, reps = 5, weightKg = 70.0, isCompleted = true)),
         )
         val currentId = repository.addWorkout(WorkoutEntity(performedOn = "2026-07-20"))
 
@@ -126,7 +170,7 @@ class RepositoryBehaviorTest {
         val exercise = repository.findOrCreateExercise("Skipped previous lift")
         repository.createWorkout(
             WorkoutEntity(performedOn = "2026-07-18"),
-            listOf(WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, reps = 8, weightKg = 50.0)),
+            listOf(WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, reps = 8, weightKg = 50.0, isCompleted = true)),
         )
         repository.createWorkout(
             WorkoutEntity(performedOn = "2026-07-20"),
@@ -137,6 +181,21 @@ class RepositoryBehaviorTest {
         val previous = repository.previousSets(currentId, exercise.id).first()
         assertEquals(listOf("2026-07-18"), previous.map { it.performedOn }.distinct())
         assertEquals(50.0, previous.single().weightKg!!, 0.001)
+    }
+
+    @Test
+    fun previousSetsIgnorePrefilledButUncompletedWorkout() = withRepository { repository ->
+        val exercise = repository.findOrCreateExercise("Unfinished press")
+        repository.createWorkout(WorkoutEntity(performedOn = "2026-07-18"), listOf(
+            WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, reps = 8, weightKg = 50.0, isCompleted = true),
+        ))
+        repository.createWorkout(WorkoutEntity(performedOn = "2026-07-20"), listOf(
+            WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, reps = 8, weightKg = 55.0),
+        ))
+        val currentId = repository.addWorkout(WorkoutEntity(performedOn = "2026-07-22"))
+
+        assertEquals(listOf("2026-07-18"), repository.previousSets(currentId, exercise.id).first().map { it.performedOn })
+        assertEquals(50.0, repository.personalRecords.first().single().weightKg, 0.001)
     }
 
     @Test
@@ -179,8 +238,8 @@ class RepositoryBehaviorTest {
         val workoutId = repository.createWorkout(
             WorkoutEntity(performedOn = "2026-07-27"),
             listOf(
-                WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, setNumber = 1, reps = 8, weightKg = 60.0),
-                WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, setNumber = 2, reps = 6, weightKg = 62.5),
+                WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, setNumber = 1, reps = 8, weightKg = 60.0, isCompleted = true),
+                WorkoutSetEntity(workoutId = 0, exerciseId = exercise.id, setNumber = 2, reps = 6, weightKg = 62.5, isCompleted = true),
             ),
         )
         val sets = repository.workoutSets(workoutId).first()

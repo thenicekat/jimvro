@@ -47,10 +47,13 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     fun deleteWorkout(id: Long) = viewModelScope.launch { repository.deleteWorkout(id) }
     fun workout(id: Long): Flow<WorkoutEntity?> = repository.workout(id)
     fun workoutSets(id: Long): Flow<List<WorkoutSetDetail>> = repository.workoutSets(id)
-    fun appendSet(workoutId: Long, exerciseId: Long, reps: Int? = null, weightKg: Double? = null) =
-        viewModelScope.launch { repository.appendSet(workoutId, exerciseId, reps, weightKg) }
+    fun appendSet(workoutId: Long, exerciseId: Long, reps: Int? = null, weightKg: Double? = null, prefillFromHistory: Boolean = false) =
+        viewModelScope.launch { repository.appendSet(workoutId, exerciseId, reps, weightKg, prefillFromHistory) }
     fun updateSet(setId: Long, reps: Int?, weightKg: Double?, rpe: Double? = null) =
         viewModelScope.launch { repository.updateSet(setId, reps, weightKg, rpe) }
+    fun completeSet(setId: Long, reps: Int, weightKg: Double?) =
+        viewModelScope.launch { repository.completeSet(setId, reps, weightKg) }
+    fun uncompleteSet(setId: Long) = viewModelScope.launch { repository.uncompleteSet(setId) }
     fun updateSetType(setId: Long, setType: String) = viewModelScope.launch { repository.updateSetType(setId, setType) }
     fun finishWorkout(workoutId: Long) = viewModelScope.launch { repository.finishWorkout(workoutId) }
     fun updateWorkoutDuration(workoutId: Long, createdAt: Long, durationSeconds: Long) =
