@@ -47,6 +47,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowOutward
 import androidx.compose.material.icons.outlined.ArrowBack
@@ -106,6 +108,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -122,6 +125,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
@@ -1506,13 +1510,57 @@ private fun MeasurementPair(label: String, left: Double?, right: Double?, settin
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FoodDaySelector(date: String, currentDate: String, onChange: (String) -> Unit) {
+    var pickerOpen by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { onChange(LocalDate.parse(date).minusDays(1).toString()) }) {
+                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Previous day")
+            }
+            TextButton(onClick = { pickerOpen = true }, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Outlined.CalendarMonth, null, Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(formatDateForDisplay(date), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            IconButton(
+                onClick = { onChange(LocalDate.parse(date).plusDays(1).toString()) },
+                enabled = date < currentDate,
+            ) { Icon(Icons.AutoMirrored.Outlined.ArrowForward, "Next day") }
+        }
+        if (date != currentDate) {
+            TextButton(onClick = { onChange(currentDate) }, modifier = Modifier.align(Alignment.End)) {
+                Text("Back to today")
+            }
+        }
+    }
+    if (pickerOpen) {
+        val selectedMillis = LocalDate.parse(date).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = selectedMillis)
+        DatePickerDialog(
+            onDismissRequest = { pickerOpen = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { millis ->
+                        onChange(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString())
+                    }
+                    pickerOpen = false
+                }) { Text("Choose") }
+            },
+            dismissButton = { TextButton(onClick = { pickerOpen = false }) { Text("Cancel") } },
+        ) { DatePicker(state = pickerState) }
+    }
+}
+
 @Composable
 private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
     val foods by viewModel.foodEntries.collectAsStateWithLifecycle()
     val savedFoods by viewModel.savedFoods.collectAsStateWithLifecycle()
-    val todayEntries = foods.filter { it.consumedOn == today() }
-    val todayCalories = todayEntries.sumOf { it.calories ?: 0.0 }
-    val todayProtein = todayEntries.sumOf { it.proteinG ?: 0.0 }
+    val currentDate = today()
+    var selectedDate by rememberSaveable { mutableStateOf(currentDate) }
+    val dayEntries = foodEntriesOn(foods, selectedDate)
+    val dayMetrics = foodDayMetrics(foods, selectedDate)
     var showAdd by remember { mutableStateOf(false) }
     var scannedProduct by remember { mutableStateOf<BarcodeProductEntity?>(null) }
     var photoEstimate by remember { mutableStateOf<FoodPhotoEstimate?>(null) }
@@ -1524,7 +1572,6 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
     var pendingSavedFood by remember { mutableStateOf<SavedFoodEntity?>(null) }
     var editingFood by remember { mutableStateOf<FoodEntryEntity?>(null) }
     var editingSavedFood by remember { mutableStateOf<SavedFoodEntity?>(null) }
-    var showFullHistory by remember { mutableStateOf(false) }
     val activity = LocalActivity.current ?: return
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1608,16 +1655,24 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
         showHeader = false,
     ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FoodDaySelector(selectedDate, currentDate) { selectedDate = it }
                 Row(Modifier.fillMaxWidth()) {
-                    Text("Today", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                    Text("${todayCalories.pretty()} / ${settings.calorieTarget} kcal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (selectedDate == currentDate) "Today" else "Daily totals", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                    Text("${dayMetrics.calories.pretty()} / ${settings.calorieTarget} kcal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                LinearProgressIndicator(progress = { if (settings.calorieTarget > 0) (todayCalories / settings.calorieTarget).toFloat().coerceIn(0f, 1f) else 0f }, modifier = Modifier.fillMaxWidth(), color = Clay)
+                LinearProgressIndicator(progress = { if (settings.calorieTarget > 0) (dayMetrics.calories / settings.calorieTarget).toFloat().coerceIn(0f, 1f) else 0f }, modifier = Modifier.fillMaxWidth(), color = Clay)
                 Row(Modifier.fillMaxWidth()) {
                     Text("Protein", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                    Text("${todayProtein.pretty()} / ${settings.proteinTarget} g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${dayMetrics.proteinG.pretty()} / ${settings.proteinTarget} g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                LinearProgressIndicator(progress = { if (settings.proteinTarget > 0) (todayProtein / settings.proteinTarget).toFloat().coerceIn(0f, 1f) else 0f }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LinearProgressIndicator(progress = { if (settings.proteinTarget > 0) (dayMetrics.proteinG / settings.proteinTarget).toFloat().coerceIn(0f, 1f) else 0f }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    Text("Carbs ${dayMetrics.carbsG.pretty()} g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Fat ${dayMetrics.fatG.pretty()} g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (selectedDate != currentDate) {
+                    Text("Compared with your current goals", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             Button(
                 onClick = {
@@ -1688,9 +1743,9 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
                                 Text("${(saved.calories ?: 0.0).pretty()} kcal · ${(saved.proteinG ?: 0.0).pretty()}g protein", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             IconButton(onClick = {
-                                viewModel.addFood(FoodEntryEntity(consumedOn = today(), name = saved.name, calories = saved.calories, proteinG = saved.proteinG, carbsG = saved.carbsG, fatG = saved.fatG))
+                                viewModel.addFood(FoodEntryEntity(consumedOn = selectedDate, name = saved.name, calories = saved.calories, proteinG = saved.proteinG, carbsG = saved.carbsG, fatG = saved.fatG))
                             }, modifier = Modifier.size(38.dp)) {
-                                Icon(Icons.Outlined.Add, "Log now", Modifier.size(18.dp), tint = Clay)
+                                Icon(Icons.Outlined.Add, "Log on selected day", Modifier.size(18.dp), tint = Clay)
                             }
                             IconButton(onClick = { pendingSavedFood = saved }, modifier = Modifier.size(38.dp)) {
                                 Icon(Icons.Outlined.Delete, "Remove saved food", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1701,12 +1756,14 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
                 }
             }
             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            if (foods.isEmpty()) EmptyState("No food logged", "Add manually, scan a barcode, or estimate from a photo.")
-            else Text("RECENT FOOD", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            val foodDays = foods.groupBy { it.consumedOn }.toList()
-            foodDays.take(if (showFullHistory) foodDays.size else 2).forEach { (date, entries) ->
-                Text(formatDateForDisplay(date))
-                entries.forEachIndexed { index, food ->
+            if (dayEntries.isEmpty()) {
+                EmptyState(
+                    if (selectedDate == currentDate) "No food logged today" else "No food logged for this day",
+                    "Add manually, scan a barcode, or estimate from a photo.",
+                )
+            } else {
+                Text(if (selectedDate == currentDate) "TODAY'S FOOD" else "FOOD ON THIS DAY", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                dayEntries.forEachIndexed { index, food ->
                     Column(Modifier.fillMaxWidth().clickable { editingFood = food }.padding(vertical = 8.dp)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
@@ -1717,38 +1774,35 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
                         }
                         Text("P ${(food.proteinG ?: 0.0).pretty()}g  ·  C ${(food.carbsG ?: 0.0).pretty()}g  ·  F ${(food.fatG ?: 0.0).pretty()}g", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (index < entries.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
-                }
-            }
-            if (foodDays.size > 2) {
-                TextButton(onClick = { showFullHistory = !showFullHistory }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (showFullHistory) "Show less" else "Show all ${foodDays.size} days")
+                    if (index < dayEntries.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
                 }
             }
     }
-    if (showAdd) FoodDialog(product = null, onDismiss = { showAdd = false }) { food, save ->
-        viewModel.addFood(food, save); showAdd = false
+    if (showAdd) FoodDialog(product = null, initialDate = selectedDate, onDismiss = { showAdd = false }) { food, save ->
+        viewModel.addFood(food, save); selectedDate = food.consumedOn; showAdd = false
     }
     scannedProduct?.let { product ->
-        FoodDialog(product = product, onDismiss = { scannedProduct = null }) { food, save ->
-            viewModel.addFood(food, save); scannedProduct = null
+        FoodDialog(product = product, initialDate = selectedDate, onDismiss = { scannedProduct = null }) { food, save ->
+            viewModel.addFood(food, save); selectedDate = food.consumedOn; scannedProduct = null
         }
     }
     photoEstimate?.let { estimate ->
         FoodDialog(
             product = null,
+            initialDate = selectedDate,
             estimate = estimate,
             photoPreview = photoPreview,
             onDismiss = { photoEstimate = null; photoPreview = null },
         ) { food, save ->
             viewModel.addFood(food, save)
+            selectedDate = food.consumedOn
             photoEstimate = null
             photoPreview = null
         }
     }
     editingFood?.let { value ->
-        FoodDialog(product = null, entry = value, onDismiss = { editingFood = null }) { food, _ ->
-            viewModel.updateFood(food); editingFood = null
+        FoodDialog(product = null, initialDate = selectedDate, entry = value, onDismiss = { editingFood = null }) { food, _ ->
+            viewModel.updateFood(food); selectedDate = food.consumedOn; editingFood = null
         }
     }
     editingSavedFood?.let { value ->
@@ -1756,7 +1810,7 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
             viewModel.updateSavedFood(saved); editingSavedFood = null
         }
     }
-    pendingFood?.let { value -> ConfirmDeleteDialog("Delete food?", "This entry will be removed from today’s totals.", { pendingFood = null }) { viewModel.deleteFood(value); pendingFood = null } }
+    pendingFood?.let { value -> ConfirmDeleteDialog("Delete food?", "This entry will be removed from the totals for ${formatDateForDisplay(value.consumedOn)}.", { pendingFood = null }) { viewModel.deleteFood(value); pendingFood = null } }
     pendingSavedFood?.let { value -> ConfirmDeleteDialog("Remove saved food?", "Logged food entries will stay unchanged.", { pendingSavedFood = null }) { viewModel.deleteSavedFood(value); pendingSavedFood = null } }
 }
 
@@ -2250,6 +2304,7 @@ private fun MeasurementDialog(settings: AppSettings, onDismiss: () -> Unit, onSa
 @Composable
 private fun FoodDialog(
     product: BarcodeProductEntity?,
+    initialDate: String,
     entry: FoodEntryEntity? = null,
     estimate: FoodPhotoEstimate? = null,
     photoPreview: ImageBitmap? = null,
@@ -2289,7 +2344,7 @@ private fun FoodDialog(
                 ?: product?.fatPer100g?.times(defaultServing / 100)?.pretty().orEmpty(),
         )
     }
-    var date by remember(entry) { mutableStateOf(entry?.consumedOn ?: today()) }
+    var date by remember(entry, initialDate) { mutableStateOf(entry?.consumedOn ?: initialDate) }
     var saveForReuse by remember(entry) { mutableStateOf(entry == null) }
     var showMoreMacros by remember(estimate, entry) {
         mutableStateOf(
