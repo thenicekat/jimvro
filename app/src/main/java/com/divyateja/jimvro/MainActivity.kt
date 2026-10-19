@@ -25,6 +25,12 @@ class MainActivity : FragmentActivity() {
             lengthUnit = preferences.getString("length_unit", "cm") ?: "cm",
             calorieTarget = preferences.getInt("calorie_target", 2_000),
             proteinTarget = preferences.getInt("protein_target", 150),
+            nutritionGoalsConfirmed = preferences.getBoolean(
+                "nutrition_goals_confirmed",
+                preferences.contains("calorie_target") || preferences.contains("protein_target"),
+            ),
+            nutritionGoal = preferences.getString("nutrition_goal", "") ?: "",
+            nutritionPlanWeightKg = preferences.getString("nutrition_plan_weight_kg", null)?.toDoubleOrNull(),
             restSeconds = preferences.getInt("rest_seconds", 90),
             proteinRemindersEnabled = preferences.getBoolean("protein_reminders_enabled", true),
             bodyRemindersEnabled = preferences.getBoolean("body_reminders_enabled", true),
@@ -59,6 +65,9 @@ class MainActivity : FragmentActivity() {
                         .putString("length_unit", value.lengthUnit)
                         .putInt("calorie_target", value.calorieTarget)
                         .putInt("protein_target", value.proteinTarget)
+                        .putBoolean("nutrition_goals_confirmed", value.nutritionGoalsConfirmed)
+                        .putString("nutrition_goal", value.nutritionGoal)
+                        .putString("nutrition_plan_weight_kg", value.nutritionPlanWeightKg?.toString())
                         .putInt("rest_seconds", value.restSeconds)
                         .putBoolean("protein_reminders_enabled", value.proteinRemindersEnabled)
                         .putBoolean("body_reminders_enabled", value.bodyRemindersEnabled)

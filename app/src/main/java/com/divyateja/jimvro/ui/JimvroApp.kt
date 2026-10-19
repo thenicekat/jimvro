@@ -125,6 +125,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
@@ -165,6 +166,9 @@ import com.divyateja.jimvro.data.WorkoutEntity
 import com.divyateja.jimvro.data.WorkoutSummary
 import com.divyateja.jimvro.data.WorkoutSetEntity
 import com.divyateja.jimvro.domain.Macros
+import com.divyateja.jimvro.domain.NutritionGuidance
+import com.divyateja.jimvro.domain.NutritionGoal
+import com.divyateja.jimvro.domain.nutritionGuidance
 import com.divyateja.jimvro.domain.scaleMacros
 import com.divyateja.jimvro.domain.weeklyScore
 import com.divyateja.jimvro.ui.theme.Clay
@@ -176,6 +180,7 @@ import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 import java.time.format.DateTimeFormatter
@@ -235,6 +240,7 @@ fun JimvroApp(
         }
     }
     var settingsOpen by remember { mutableStateOf(false) }
+    var nutritionPlanOpen by remember { mutableStateOf(false) }
     var geminiKeyOpen by remember { mutableStateOf(false) }
     var healthMessage by remember { mutableStateOf<String?>(null) }
     var restoreMessage by remember { mutableStateOf<String?>(null) }
@@ -418,6 +424,12 @@ fun JimvroApp(
                     onThemeModeChange = onThemeModeChange,
                     onBack = { navController.popBackStack() },
                     onGoals = { settingsOpen = true },
+                    onFoodPlan = { nutritionPlanOpen = true },
+                    foodPlanSummary = when {
+                        settings.nutritionGoal.isNotBlank() -> "${settings.nutritionGoal.replaceFirstChar(Char::uppercase)} · ${settings.calorieTarget} kcal · ${settings.proteinTarget} g protein"
+                        settings.nutritionGoalsConfirmed -> "Review your daily calorie and protein goals"
+                        else -> "Choose cut, recomp, or bulk"
+                    },
                     onGeminiKey = { geminiKeyOpen = true },
                     geminiKeyConfigured = settings.geminiApiKey.isNotBlank(),
                     onHealthSync = requestHealthSync,
@@ -449,7 +461,7 @@ fun JimvroApp(
                 )
             }
             composable(Destination.Body.route) { BodyScreen(viewModel, settings) }
-            composable(Destination.Food.route) { FoodScreen(viewModel, settings) }
+            composable(Destination.Food.route) { FoodScreen(viewModel, settings) { nutritionPlanOpen = true } }
         }
     }
     if (settingsOpen) SettingsSheet(settings, { settingsOpen = false }) {
@@ -461,6 +473,13 @@ fun JimvroApp(
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         settingsOpen = false
+    }
+    if (nutritionPlanOpen) NutritionPlanSheet(settings, healthMeasurements, { nutritionPlanOpen = false }) { plan ->
+        onSettingsChange(plan)
+        if (plan.proteinRemindersEnabled && Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        nutritionPlanOpen = false
     }
     if (geminiKeyOpen) GeminiKeySheet(settings, { geminiKeyOpen = false }) {
         onSettingsChange(it)
@@ -742,7 +761,11 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
                         Box(Modifier.width(1.dp).height(34.dp).background(MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)))
                         MetricInline(protein.pretty(), "g protein")
                     }
-                    Text("${calories.pretty()} / ${settings.calorieTarget} kcal · ${protein.pretty()} / ${settings.proteinTarget}g protein", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "${calories.pretty()}${if (settings.nutritionGoalsConfirmed && settings.calorieTarget > 0) " / ${settings.calorieTarget}" else ""} kcal · " +
+                            "${protein.pretty()}${if (settings.nutritionGoalsConfirmed && settings.proteinTarget > 0) " / ${settings.proteinTarget}" else ""}g protein",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -1554,13 +1577,99 @@ private fun FoodDaySelector(date: String, currentDate: String, onChange: (String
 }
 
 @Composable
-private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
+private fun FoodCaptureButton(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.heightIn(min = 80.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.height(4.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, maxLines = 2)
+        }
+    }
+}
+
+@Composable
+private fun FoodAdvice(guide: NutritionGuidance, goalName: String) {
+    val mealAmounts = listOfNotNull(
+        guide.nextMealCalories?.let { "$it kcal" },
+        guide.nextMealProteinG?.let { "$it g protein" },
+    ).joinToString(" · ")
+    if (mealAmounts.isEmpty() && guide.mealsLeft > 0 && !guide.incompleteLog &&
+        guide.caloriesLeft != 0 && guide.proteinLeftG != 0) return
+
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        val goal = NutritionGoal.entries.firstOrNull { it.name.equals(goalName, ignoreCase = true) }
+        Text(goal?.let { "${it.label} food guide" } ?: "Food guide", style = MaterialTheme.typography.titleSmall)
+        when {
+            mealAmounts.isNotEmpty() && !guide.hasLoggedFood -> Text(
+                "Starting point from your daily goals: about $mealAmounts per meal. Log food to tailor this.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            mealAmounts.isNotEmpty() -> Text(
+                "About $mealAmounts for your next meal, based on what you've logged.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            guide.mealsLeft == 0 -> Text(
+                "No next-meal suggestion after your meal times. You can still log food you ate.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            guide.caloriesLeft == 0 && (guide.proteinLeftG ?: 0) > 0 -> Text(
+                "Calorie goal already logged; no extra meal suggested to catch up on protein.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            !guide.incompleteLog -> Text("Today's logged goals are met.", style = MaterialTheme.typography.bodySmall)
+        }
+        guide.foodIdea?.let { idea ->
+            val portions = idea.portions.pretty()
+            Text(
+                "Saved idea: $portions × ${idea.name} (${idea.calories} kcal · ${idea.proteinG} g protein).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (guide.incompleteLog) Text(
+            "Some entries are missing nutrition values; fill them in for a fuller guide.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings, onOpenNutritionPlan: () -> Unit) {
     val foods by viewModel.foodEntries.collectAsStateWithLifecycle()
     val savedFoods by viewModel.savedFoods.collectAsStateWithLifecycle()
     val currentDate = today()
     var selectedDate by rememberSaveable { mutableStateOf(currentDate) }
+    var nowMinutes by remember { mutableStateOf(LocalTime.now().toSecondOfDay() / 60) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            nowMinutes = LocalTime.now().toSecondOfDay() / 60
+        }
+    }
     val dayEntries = foodEntriesOn(foods, selectedDate)
     val dayMetrics = foodDayMetrics(foods, selectedDate)
+    val guide = if (selectedDate == currentDate && settings.nutritionGoalsConfirmed) nutritionGuidance(
+        dayEntries, savedFoods, settings.calorieTarget, settings.proteinTarget,
+        listOf(settings.breakfastReminderMinutes, settings.lunchReminderMinutes, settings.dinnerReminderMinutes),
+        nowMinutes,
+    ) else null
     var showAdd by remember { mutableStateOf(false) }
     var scannedProduct by remember { mutableStateOf<BarcodeProductEntity?>(null) }
     var photoEstimate by remember { mutableStateOf<FoodPhotoEstimate?>(null) }
@@ -1574,6 +1683,15 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
     var editingSavedFood by remember { mutableStateOf<SavedFoodEntity?>(null) }
     val activity = LocalActivity.current ?: return
     val context = LocalContext.current
+    val preferences = remember(context) { context.getSharedPreferences("jimvro_settings", Context.MODE_PRIVATE) }
+    var onboardingSeen by remember { mutableStateOf(preferences.getBoolean("nutrition_plan_onboarding_seen", false)) }
+    LaunchedEffect(settings.nutritionGoalsConfirmed) {
+        if (!settings.nutritionGoalsConfirmed && !onboardingSeen) {
+            onboardingSeen = true
+            preferences.edit().putBoolean("nutrition_plan_onboarding_seen", true).apply()
+            onOpenNutritionPlan()
+        }
+    }
     val scope = rememberCoroutineScope()
     val scanner = remember {
         val options = GmsBarcodeScannerOptions.Builder()
@@ -1658,100 +1776,132 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings) {
                 FoodDaySelector(selectedDate, currentDate) { selectedDate = it }
                 Row(Modifier.fillMaxWidth()) {
                     Text(if (selectedDate == currentDate) "Today" else "Daily totals", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                    Text("${dayMetrics.calories.pretty()} / ${settings.calorieTarget} kcal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        if (settings.nutritionGoalsConfirmed && settings.calorieTarget > 0) "${dayMetrics.calories.pretty()} / ${settings.calorieTarget} kcal"
+                        else "${dayMetrics.calories.pretty()} kcal logged",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                LinearProgressIndicator(progress = { if (settings.calorieTarget > 0) (dayMetrics.calories / settings.calorieTarget).toFloat().coerceIn(0f, 1f) else 0f }, modifier = Modifier.fillMaxWidth(), color = Clay)
+                if (settings.nutritionGoalsConfirmed && settings.calorieTarget > 0) LinearProgressIndicator(progress = { (dayMetrics.calories / settings.calorieTarget).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = Clay)
                 Row(Modifier.fillMaxWidth()) {
                     Text("Protein", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                    Text("${dayMetrics.proteinG.pretty()} / ${settings.proteinTarget} g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        if (settings.nutritionGoalsConfirmed && settings.proteinTarget > 0) "${dayMetrics.proteinG.pretty()} / ${settings.proteinTarget} g"
+                        else "${dayMetrics.proteinG.pretty()} g logged",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                LinearProgressIndicator(progress = { if (settings.proteinTarget > 0) (dayMetrics.proteinG / settings.proteinTarget).toFloat().coerceIn(0f, 1f) else 0f }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (settings.nutritionGoalsConfirmed && settings.proteinTarget > 0) LinearProgressIndicator(progress = { (dayMetrics.proteinG / settings.proteinTarget).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                     Text("Carbs ${dayMetrics.carbsG.pretty()} g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("Fat ${dayMetrics.fatG.pretty()} g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (selectedDate != currentDate) {
+                if (selectedDate != currentDate && settings.nutritionGoalsConfirmed) {
                     Text("Compared with your current goals", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Button(
-                onClick = {
-                    scanner.startScan()
-                        .addOnSuccessListener { barcode ->
-                            barcode.rawValue?.let { code ->
-                                scope.launch {
-                                    viewModel.lookupBarcode(code)
-                                        .onSuccess { scannedProduct = it }
-                                        .onFailure { message = it.message ?: "Product lookup failed" }
-                                }
-                            }
-                        }
-                        .addOnFailureListener { message = it.message ?: "Scanner unavailable" }
-                },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
-            ) { Icon(Icons.Outlined.QrCodeScanner, null); Spacer(Modifier.width(8.dp)); Text("Scan barcode") }
-            if (estimatingPhoto) {
-                Text("Estimating macros…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            guide?.let { FoodAdvice(it, settings.nutritionGoal) }
+            if (selectedDate == currentDate && settings.nutritionGoal.isBlank()) {
+                Column {
+                    Text(
+                        if (settings.nutritionGoalsConfirmed) "Your saved goals are in use. Choose cut, recomp, or bulk for a guided starting point."
+                        else "Pick cut, recomp, or bulk to get a starting food plan.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(onClick = onOpenNutritionPlan) { Text("Build a food plan") }
+                }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
+                FoodCaptureButton(
+                    label = "Barcode",
+                    icon = Icons.Outlined.QrCodeScanner,
+                    onClick = {
+                        scanner.startScan()
+                            .addOnSuccessListener { barcode ->
+                                barcode.rawValue?.let { code ->
+                                    scope.launch {
+                                        viewModel.lookupBarcode(code)
+                                            .onSuccess { scannedProduct = it }
+                                            .onFailure { message = it.message ?: "Product lookup failed" }
+                                    }
+                                }
+                            }
+                            .addOnFailureListener { message = it.message ?: "Scanner unavailable" }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                FoodCaptureButton(
+                    label = "Camera",
+                    icon = Icons.Outlined.PhotoCamera,
                     onClick = launchFoodCamera,
                     enabled = !estimatingPhoto,
-                    modifier = Modifier.weight(1f).height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
-                    contentPadding = PaddingValues(horizontal = 8.dp),
-                ) {
-                    Icon(Icons.Outlined.PhotoCamera, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Camera", fontSize = 14.sp)
-                }
-                Button(
+                    modifier = Modifier.weight(1f),
+                )
+                FoodCaptureButton(
+                    label = "Gallery",
+                    icon = Icons.Outlined.Image,
                     onClick = {
                         if (requireGeminiKey()) {
                             foodPhotoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                         }
                     },
                     enabled = !estimatingPhoto,
-                    modifier = Modifier.weight(1f).height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
-                    contentPadding = PaddingValues(horizontal = 8.dp),
-                ) {
-                    Icon(Icons.Outlined.Image, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Gallery", fontSize = 14.sp)
-                }
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            if (estimatingPhoto) {
+                Text("Estimating macros…", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (savedFoods.isNotEmpty()) {
-                Text("QUICK ADD", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                JournalCard {
-                    savedFoods.forEachIndexed { index, saved ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Quick add", style = MaterialTheme.typography.titleMedium)
+                    savedFoods.forEach { saved ->
+                        var optionsExpanded by remember(saved.id) { mutableStateOf(false) }
+                        val summary = listOfNotNull(
+                            saved.calories?.let { "${it.pretty()} kcal" },
+                            saved.proteinG?.let { "${it.pretty()}g protein" },
+                            saved.carbsG?.let { "${it.pretty()}g carbs" },
+                            saved.fatG?.let { "${it.pretty()}g fat" },
+                        ).take(2).joinToString(" · ").ifBlank { "Macros not set" }
                         Row(
-                            Modifier.fillMaxWidth().clickable {
-                                editingSavedFood = saved
-                            }.padding(vertical = 8.dp),
+                            Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(saved.name, style = MaterialTheme.typography.bodyMedium)
-                                Text("${(saved.calories ?: 0.0).pretty()} kcal · ${(saved.proteinG ?: 0.0).pretty()}g protein", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(saved.name, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             }
-                            IconButton(onClick = {
-                                viewModel.addFood(FoodEntryEntity(consumedOn = selectedDate, name = saved.name, calories = saved.calories, proteinG = saved.proteinG, carbsG = saved.carbsG, fatG = saved.fatG))
-                            }, modifier = Modifier.size(38.dp)) {
-                                Icon(Icons.Outlined.Add, "Log on selected day", Modifier.size(18.dp), tint = Clay)
+                            IconButton(
+                                onClick = {
+                                    viewModel.addFood(FoodEntryEntity(consumedOn = selectedDate, name = saved.name, calories = saved.calories, proteinG = saved.proteinG, carbsG = saved.carbsG, fatG = saved.fatG))
+                                },
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Add,
+                                    "Add ${saved.name} on ${formatDateForDisplay(selectedDate)}",
+                                    Modifier.size(22.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                )
                             }
-                            IconButton(onClick = { pendingSavedFood = saved }, modifier = Modifier.size(38.dp)) {
-                                Icon(Icons.Outlined.Delete, "Remove saved food", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Box {
+                                IconButton(onClick = { optionsExpanded = true }, modifier = Modifier.size(48.dp)) {
+                                    Icon(Icons.Outlined.MoreHoriz, "More options for ${saved.name}", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                DropdownMenu(expanded = optionsExpanded, onDismissRequest = { optionsExpanded = false }) {
+                                    DropdownMenuItem(text = { Text("Edit saved food") }, onClick = {
+                                        optionsExpanded = false
+                                        editingSavedFood = saved
+                                    })
+                                    DropdownMenuItem(text = { Text("Remove saved food", color = MaterialTheme.colorScheme.error) }, onClick = {
+                                        optionsExpanded = false
+                                        pendingSavedFood = saved
+                                    })
+                                }
                             }
                         }
-                        if (index < savedFoods.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
                     }
                 }
             }
@@ -1861,8 +2011,12 @@ internal fun FormSheet(
     onPrimary: () -> Unit,
     onDismiss: () -> Unit,
     primaryHeight: Dp = 50.dp,
+    dismissLabel: String = "Cancel",
+    scrollKey: Int = 0,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val scrollState = rememberScrollState()
+    LaunchedEffect(scrollKey) { scrollState.scrollTo(0) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -1886,7 +2040,7 @@ internal fun FormSheet(
                 Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Column(
-                Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                Modifier.weight(1f).verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 content = content,
             )
@@ -1902,7 +2056,7 @@ internal fun FormSheet(
                     disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
                 ),
             ) { Text(primaryLabel) }
-            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().height(40.dp)) { Text("Cancel") }
+            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().height(40.dp)) { Text(dismissLabel) }
         }
     }
 }
@@ -1913,6 +2067,8 @@ private fun SettingsScreen(
     onThemeModeChange: (ThemeMode) -> Unit,
     onBack: () -> Unit,
     onGoals: () -> Unit,
+    onFoodPlan: () -> Unit,
+    foodPlanSummary: String,
     onGeminiKey: () -> Unit,
     geminiKeyConfigured: Boolean,
     onHealthSync: () -> Unit,
@@ -1953,6 +2109,7 @@ private fun SettingsScreen(
                     }
                 }
                 SettingsActionRow("Goals & units", "Weight, measurements, nutrition, and rest timer", onGoals)
+                SettingsActionRow("Food plan", foodPlanSummary, onFoodPlan)
             }
         }
         item {
@@ -2053,8 +2210,8 @@ private fun GeminiKeySheet(settings: AppSettings, onDismiss: () -> Unit, onSave:
 
 @Composable
 private fun SettingsSheet(settings: AppSettings, onDismiss: () -> Unit, onSave: (AppSettings) -> Unit) {
-    var calories by remember(settings) { mutableStateOf(settings.calorieTarget.toString()) }
-    var protein by remember(settings) { mutableStateOf(settings.proteinTarget.toString()) }
+    var calories by remember(settings) { mutableStateOf(if (settings.nutritionGoalsConfirmed) settings.calorieTarget.toString() else "") }
+    var protein by remember(settings) { mutableStateOf(if (settings.nutritionGoalsConfirmed) settings.proteinTarget.toString() else "") }
     var rest by remember(settings) { mutableStateOf(settings.restSeconds.toString()) }
     var weightUnit by remember(settings) { mutableStateOf(settings.weightUnit) }
     var lengthUnit by remember(settings) { mutableStateOf(settings.lengthUnit) }
@@ -2078,6 +2235,8 @@ private fun SettingsSheet(settings: AppSettings, onDismiss: () -> Unit, onSave: 
                 lengthUnit = lengthUnit,
                 calorieTarget = calories.toIntOrNull()?.coerceAtLeast(0) ?: 0,
                 proteinTarget = protein.toIntOrNull()?.coerceAtLeast(0) ?: 0,
+                nutritionGoalsConfirmed = (calories.toIntOrNull() ?: 0) > 0 || (protein.toIntOrNull() ?: 0) > 0,
+                nutritionGoal = if ((calories.toIntOrNull() ?: 0) > 0 || (protein.toIntOrNull() ?: 0) > 0) settings.nutritionGoal else "",
                 restSeconds = rest.toIntOrNull()?.coerceIn(15, 600) ?: 90,
                 proteinRemindersEnabled = remindersEnabled,
                 bodyRemindersEnabled = bodyRemindersEnabled,
@@ -2105,6 +2264,11 @@ private fun SettingsSheet(settings: AppSettings, onDismiss: () -> Unit, onSave: 
             }
         }
         Text("DAILY GOALS", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (!settings.nutritionGoalsConfirmed) Text(
+            "Build a food plan for a guided starting point, or enter goals you choose here.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppField(calories, { calories = it.filter(Char::isDigit) }, "Calories", Modifier.weight(1f))
             AppField(protein, { protein = it.filter(Char::isDigit) }, "Protein (g)", Modifier.weight(1f))
@@ -2117,7 +2281,7 @@ private fun SettingsSheet(settings: AppSettings, onDismiss: () -> Unit, onSave: 
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("Meal-time reminders", fontSize = 15.sp)
-                Text("Show protein progress at breakfast, lunch, and dinner", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Only nudge when logged protein is behind your meal-time pace", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Switch(checked = remindersEnabled, onCheckedChange = { remindersEnabled = it })
         }
