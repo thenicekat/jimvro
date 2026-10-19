@@ -65,7 +65,6 @@ import com.divyateja.jimvro.data.ExerciseEntity
 import com.divyateja.jimvro.data.TemplateSummary
 import com.divyateja.jimvro.data.TemplateTarget
 import com.divyateja.jimvro.data.TemplateLine
-import com.divyateja.jimvro.ui.theme.Clay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -211,7 +210,7 @@ fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit, onExercise: (Long
         BackLink(onBack)
         if (records.isEmpty()) Text("No records yet. Log weighted sets to build this list.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         records.groupBy { it.muscleGroup }.forEach { (group, items) ->
-            Text(group.uppercase(), fontSize = 11.sp, letterSpacing = 1.5.sp, color = Clay)
+            Text(group.uppercase(), fontSize = 11.sp, letterSpacing = 1.5.sp, color = MaterialTheme.colorScheme.secondary)
             JournalCard {
                 items.forEach { record ->
                     Row(Modifier.fillMaxWidth().clickable { onExercise(record.exerciseId) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -238,7 +237,7 @@ fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit, onExercise: (Long
         { showMerge = false },
         primaryHeight = 60.dp,
     ) {
-        Text("KEEP", fontSize = 10.sp, letterSpacing = 1.4.sp, color = Clay)
+        Text("KEEP", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.secondary)
         records.forEach { record ->
             FilterChip(
                 selected = mergeInto == record.exerciseId,
@@ -247,7 +246,7 @@ fun RecordsScreen(viewModel: AppViewModel, onBack: () -> Unit, onExercise: (Long
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        Text("DUPLICATES", fontSize = 10.sp, letterSpacing = 1.4.sp, color = Clay)
+        Text("DUPLICATES", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.secondary)
         records.filter { it.exerciseId != mergeInto }.forEach { record ->
             FilterChip(
                 selected = record.exerciseId in mergeFrom,
@@ -333,7 +332,7 @@ fun ExerciseProgressScreen(viewModel: AppViewModel, exerciseId: Long, onBack: ()
         onDismiss,
     ) {
         AppField(name, { name = it }, "Template name")
-        Text("EXERCISES", fontSize = 10.sp, letterSpacing = 1.4.sp, color = Clay)
+        Text("EXERCISES", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.secondary)
         targets.forEachIndexed { index, target ->
             val exercise = exercises.firstOrNull { it.id == target.exerciseId }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -411,7 +410,7 @@ internal fun ExerciseSearchField(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
     ) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.Search, null, Modifier.size(19.dp), tint = Clay)
+            Icon(Icons.Outlined.Search, null, Modifier.size(19.dp), tint = MaterialTheme.colorScheme.secondary)
             Spacer(Modifier.width(10.dp))
             Text(
                 selected?.name ?: "Choose exercise",
@@ -482,7 +481,7 @@ private fun ExercisePickerDialog(
                     leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(19.dp)) },
                     singleLine = true,
                     shape = RoundedCornerShape(8.dp),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Clay),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.secondary),
                 )
                 if (query.isNotBlank() && matches.none { it.name.equals(query.trim(), ignoreCase = true) }) {
                     TextButton(
@@ -509,7 +508,7 @@ private fun ExercisePickerDialog(
                                 Icon(
                                     if (exercise.favorite) Icons.Outlined.Star else Icons.Outlined.StarBorder,
                                     if (exercise.favorite) "Remove favorite" else "Add favorite",
-                                    tint = if (exercise.favorite) Clay else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    tint = if (exercise.favorite) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                             IconButton(onClick = { pendingDelete = exercise }) {

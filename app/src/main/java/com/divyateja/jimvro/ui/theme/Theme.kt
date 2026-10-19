@@ -28,11 +28,13 @@ val Fraunces = FontFamily(
     Font(R.font.fraunces, FontWeight.SemiBold),
 )
 
-private val LightColors = lightColorScheme(
+internal val LightColors = lightColorScheme(
     primary = Ink,
     onPrimary = PaperCard,
     secondary = Clay,
     onSecondary = Color.White,
+    secondaryContainer = ClayMuted,
+    onSecondaryContainer = Ink,
     tertiary = Clay,
     background = Paper,
     onBackground = Ink,
@@ -45,15 +47,17 @@ private val LightColors = lightColorScheme(
     surfaceContainer = PaperCard,
     surfaceContainerHigh = PaperCard,
     surfaceContainerHighest = Color(0xFFE9EDE3),
-    outline = Color(0xFFC8CEC1),
+    outline = Color(0xFF7B8276),
     error = Color(0xFFB3261E),
 )
 
-private val DarkColors = darkColorScheme(
+internal val DarkColors = darkColorScheme(
     primary = Color(0xFFF1F4EC),
     onPrimary = Espresso,
     secondary = Color(0xFFA6D85D),
     onSecondary = Color(0xFF152000),
+    secondaryContainer = Color(0xFF2D3A1E),
+    onSecondaryContainer = Color(0xFFD5EDB5),
     tertiary = Color(0xFFA6D85D),
     background = Espresso,
     onBackground = Color(0xFFF0F3EB),
@@ -66,7 +70,7 @@ private val DarkColors = darkColorScheme(
     surfaceContainer = EspressoCard,
     surfaceContainerHigh = Color(0xFF20241F),
     surfaceContainerHighest = Color(0xFF292E27),
-    outline = Color(0xFF51594F),
+    outline = Color(0xFF818A7A),
 )
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }

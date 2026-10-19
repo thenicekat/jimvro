@@ -40,7 +40,9 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     fun deleteMeasurement(value: MeasurementEntity) = viewModelScope.launch { repository.deleteMeasurement(value) }
     fun addProgressPhoto(value: ProgressPhotoEntity) = viewModelScope.launch { repository.addProgressPhoto(value) }
     fun deleteProgressPhoto(value: ProgressPhotoEntity) = viewModelScope.launch { repository.deleteProgressPhoto(value) }
-    fun addWorkout(value: WorkoutEntity) = viewModelScope.launch { repository.addWorkout(value) }
+    fun addWorkout(value: WorkoutEntity, onCreated: (Long) -> Unit = {}) = viewModelScope.launch {
+        onCreated(repository.addWorkout(value))
+    }
     fun createWorkout(value: WorkoutEntity, sets: List<WorkoutSetEntity>) = viewModelScope.launch {
         repository.createWorkout(value, sets)
     }
@@ -82,6 +84,7 @@ class AppViewModel(private val repository: JimvroRepository) : ViewModel() {
     fun reorderTemplateLines(lines: List<TemplateLine>) = viewModelScope.launch { repository.reorderTemplateLines(lines) }
     suspend fun startFromTemplate(templateId: Long, date: String): Long = repository.startFromTemplate(templateId, date)
     fun addFood(value: FoodEntryEntity, saveForReuse: Boolean = false) = viewModelScope.launch { repository.addFood(value, saveForReuse) }
+    suspend fun quickAddFood(value: FoodEntryEntity): FoodEntryEntity = value.copy(id = repository.addFood(value))
     fun updateFood(value: FoodEntryEntity) = viewModelScope.launch { repository.updateFood(value) }
     fun deleteFood(value: FoodEntryEntity) = viewModelScope.launch { repository.deleteFood(value) }
     fun updateSavedFood(value: SavedFoodEntity) = viewModelScope.launch { repository.updateSavedFood(value) }

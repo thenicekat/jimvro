@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -35,14 +36,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.divyateja.jimvro.AppViewModel
 import com.divyateja.jimvro.data.WorkoutSummary
-import com.divyateja.jimvro.ui.theme.Clay
-import com.divyateja.jimvro.ui.theme.ClayMuted
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -69,7 +72,7 @@ fun WorkoutCalendarScreen(viewModel: AppViewModel, onBack: () -> Unit, onOpenWor
             Text("Workouts")
         }
         Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text("TRAINING HISTORY", color = Clay, fontSize = 10.sp, letterSpacing = 1.5.sp)
+            Text("TRAINING HISTORY", color = MaterialTheme.colorScheme.secondary, fontSize = 10.sp, letterSpacing = 1.5.sp)
             Text("Calendar", style = MaterialTheme.typography.headlineLarge)
             Text("See training frequency and open any logged session.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -113,7 +116,7 @@ fun WorkoutCalendarScreen(viewModel: AppViewModel, onBack: () -> Unit, onOpenWor
             Text(formatDateForDisplay(selectedDate.toString()), style = MaterialTheme.typography.titleMedium)
             val selectedWorkouts = workoutsByDate[selectedDate.toString()].orEmpty()
             if (selectedWorkouts.isEmpty()) {
-                Text("Rest day · no sessions logged", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("No sessions logged", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 selectedWorkouts.forEach { workout ->
                     Column(
@@ -145,14 +148,18 @@ private fun CalendarDay(
 ) {
     Box(
         modifier.aspectRatio(1f)
-            .background(if (selected) ClayMuted else MaterialTheme.colorScheme.surface, RoundedCornerShape(9.dp))
-            .clickable(enabled = date != null, onClick = onClick),
+            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface, RoundedCornerShape(9.dp))
+            .then(if (date != null) Modifier
+                .selectable(selected = selected, role = Role.Button, onClick = onClick)
+                .semantics(mergeDescendants = true) {
+                    contentDescription = "${formatDateForDisplay(date.toString())}, ${sessions.size} session${if (sessions.size == 1) "" else "s"} logged"
+                } else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         date?.let {
-            Text(it.dayOfMonth.toString(), fontSize = 13.sp)
+            Text(it.dayOfMonth.toString(), modifier = Modifier.clearAndSetSemantics {}, fontSize = 13.sp, color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface)
             if (sessions.isNotEmpty()) {
-                Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp).size(5.dp).background(Clay, CircleShape))
+                Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp).size(5.dp).background(MaterialTheme.colorScheme.secondary, CircleShape))
             }
         }
     }

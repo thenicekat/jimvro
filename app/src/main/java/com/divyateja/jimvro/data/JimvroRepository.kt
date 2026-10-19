@@ -152,9 +152,10 @@ class JimvroRepository(private val database: JimvroDatabase) {
         }
         database.workoutDao().createWorkout(WorkoutEntity(performedOn = date, name = template.name), stubs)
     }
-    suspend fun addFood(value: FoodEntryEntity, saveForReuse: Boolean = false) {
-        database.foodDao().insert(value)
+    suspend fun addFood(value: FoodEntryEntity, saveForReuse: Boolean = false): Long = database.withTransaction {
+        val id = database.foodDao().insert(value)
         if (saveForReuse) database.foodDao().save(SavedFoodEntity(name = value.name, calories = value.calories, proteinG = value.proteinG, carbsG = value.carbsG, fatG = value.fatG))
+        id
     }
     suspend fun updateFood(value: FoodEntryEntity) = database.foodDao().update(value.copy(updatedAt = System.currentTimeMillis()))
     suspend fun deleteFood(value: FoodEntryEntity) = database.foodDao().delete(value)

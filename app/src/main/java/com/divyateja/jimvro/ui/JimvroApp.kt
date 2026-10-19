@@ -46,6 +46,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
@@ -92,6 +93,10 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -123,6 +128,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -172,7 +178,6 @@ import com.divyateja.jimvro.domain.nutritionGuidance
 import com.divyateja.jimvro.domain.scaleMacros
 import com.divyateja.jimvro.domain.weeklyScore
 import com.divyateja.jimvro.ui.theme.Clay
-import com.divyateja.jimvro.ui.theme.ClayMuted
 import com.divyateja.jimvro.ui.theme.ThemeMode
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
@@ -187,6 +192,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -206,7 +212,7 @@ private enum class Destination(val route: String, val label: String, val icon: I
 }
 
 private fun today(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-private fun Double.pretty(): String = if (this % 1.0 == 0.0) toInt().toString() else "%.1f".format(this)
+private fun Double.pretty(): String = if (this % 1.0 == 0.0) "%.0f".format(this) else "%.1f".format(this)
 private fun Long.compactDuration(): String = if (this >= 3600) "%dh %02dm".format(this / 3600, (this % 3600) / 60) else "%dm".format(this / 60)
 private val progressPhotoPoses = listOf("Front", "Side", "Back", "Other")
 
@@ -375,8 +381,8 @@ fun JimvroApp(
                         icon = { Icon(destination.icon, null) },
                         label = { Text(destination.label) },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Clay,
-                            indicatorColor = ClayMuted,
+                            selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
                         ),
                     )
                 }
@@ -394,7 +400,7 @@ fun JimvroApp(
             popExitTransition = { ExitTransition.None },
         ) {
             composable(Destination.Today.route) {
-                TodayScreen(viewModel, navigateRoot, settings)
+                TodayScreen(viewModel, navigateRoot, settings, onOpenWorkout = { id -> navController.navigate("workout/$id") })
             }
             composable(Destination.Workouts.route) {
                 WorkoutsScreen(
@@ -461,7 +467,9 @@ fun JimvroApp(
                 )
             }
             composable(Destination.Body.route) { BodyScreen(viewModel, settings) }
-            composable(Destination.Food.route) { FoodScreen(viewModel, settings) { nutritionPlanOpen = true } }
+            composable(Destination.Food.route) {
+                FoodScreen(viewModel, settings, onOpenNutritionPlan = { nutritionPlanOpen = true }, onOpenPhotoSettings = { geminiKeyOpen = true })
+            }
         }
     }
     if (settingsOpen) SettingsSheet(settings, { settingsOpen = false }) {
@@ -544,7 +552,7 @@ internal fun Page(
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
                     Column(Modifier.weight(1f)) {
-                        Text(eyebrow.uppercase(), color = Clay, fontSize = 10.sp, letterSpacing = 1.5.sp)
+                        Text(eyebrow.uppercase(), color = MaterialTheme.colorScheme.secondary, fontSize = 10.sp, letterSpacing = 1.5.sp)
                         Spacer(Modifier.height(6.dp))
                         Text(title, style = MaterialTheme.typography.headlineLarge)
                         if (subtitle.isNotBlank()) {
@@ -593,7 +601,7 @@ internal fun JournalCard(modifier: Modifier = Modifier, content: @Composable Col
 }
 
 @Composable
-private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, settings: AppSettings) {
+private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, settings: AppSettings, onOpenWorkout: (Long) -> Unit) {
     val workouts by viewModel.workouts.collectAsStateWithLifecycle()
     val measurements by viewModel.measurements.collectAsStateWithLifecycle()
     val foods by viewModel.foodEntries.collectAsStateWithLifecycle()
@@ -601,8 +609,9 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
     LaunchedEffect(Unit) { while (isActive) { delay(60_000); date = today() } }
     val weeklyMuscleSets by remember(date) { viewModel.weeklyMuscleSets(date) }.collectAsStateWithLifecycle(emptyList())
     val todayFoods = foods.filter { it.consumedOn == date }
-    val calories = todayFoods.sumOf { it.calories ?: 0.0 }
-    val protein = todayFoods.sumOf { it.proteinG ?: 0.0 }
+    val nutrition = foodDayMetrics(foods, date)
+    val calories = nutritionTotal(nutrition.calories, nutrition.entryCount, nutrition.missingCalories)
+    val protein = nutritionTotal(nutrition.proteinG, nutrition.entryCount, nutrition.missingProtein)
     val locale = LocalConfiguration.current.primaryLocale()
     val todayWorkouts = workouts.filter { it.performedOn == date }
     val volume = todayWorkouts.sumOf { it.volumeKg }
@@ -612,8 +621,12 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
     }
     val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
     val greeting = when { hour < 12 -> "Good morning."; hour < 18 -> "Good afternoon."; else -> "Good evening." }
-    val dashedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.65f)
     var showMeasurement by remember { mutableStateOf(false) }
+    var showWorkout by rememberSaveable { mutableStateOf(false) }
+    val activeWorkout = workouts.filter { it.finishedAt == null }.maxByOrNull { it.createdAt }
+    val openTraining: () -> Unit = {
+        if (activeWorkout != null) onOpenWorkout(activeWorkout.id) else showWorkout = true
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -633,12 +646,25 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
             }
         }
         item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = openTraining, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(8.dp)) {
+                    Icon(Icons.Outlined.FitnessCenter, null, Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (activeWorkout == null) "Start workout" else "Resume workout")
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    QuickLogButton("Log food") { onNavigate(Destination.Food.route) }
+                    QuickLogButton("Measurement") { showMeasurement = true }
+                }
+            }
+        }
+        item {
             val start = runCatching { LocalDate.parse(settings.missionStartDate) }.getOrNull()
             val end = runCatching { LocalDate.parse(settings.missionEndDate) }.getOrNull()
             JournalCard {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("4 MONTH MISSION", fontSize = 10.sp, letterSpacing = 1.5.sp, color = Clay)
+                        Text("4 MONTH MISSION", fontSize = 10.sp, letterSpacing = 1.5.sp, color = MaterialTheme.colorScheme.secondary)
                         Text(
                             if (start != null && end != null) "Week ${(ChronoUnit.WEEKS.between(start, LocalDate.parse(date)) + 1).coerceAtLeast(1)} / ${(ChronoUnit.WEEKS.between(start, end) + 1).coerceAtLeast(1)}" else "Set your goal and dates",
                             fontSize = 13.sp,
@@ -657,20 +683,20 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Light,
                     )
-                }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("This week", Modifier.weight(1f), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("${weeklyScore.score}/100", fontSize = 20.sp)
-                }
-                LinearProgressIndicator(progress = { weeklyScore.score / 100f }, modifier = Modifier.fillMaxWidth(), color = Clay)
-                Text(
-                    "Training ${weeklyScore.trainingDone}/${weeklyScore.trainingTarget}  ·  Protein ${weeklyScore.proteinDays}/${weeklyScore.daysElapsed}  ·  Calories ${weeklyScore.calorieDays}/${weeklyScore.daysElapsed}",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                weeklyScore.weeklyWeightChangeKg?.let { change ->
-                    val status = if (change in -0.35..-0.15) "Ideal cut rate" else if (change < -0.35) "Losing quickly" else "Weight trend ${if (change >= 0) "+" else ""}${change.pretty()} kg/week"
-                    Text(if (status.startsWith("Weight trend")) "Weight trend ${if (change >= 0) "+" else ""}${change.displayWeight(settings).pretty()} ${settings.weightUnit}/week" else status, fontSize = 12.sp, color = Clay)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("This week", Modifier.weight(1f), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${weeklyScore.score}/100", fontSize = 20.sp)
+                    }
+                    LinearProgressIndicator(progress = { weeklyScore.score / 100f }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.secondary)
+                    Text(
+                        "Training ${weeklyScore.trainingDone}/${weeklyScore.trainingTarget}  ·  Protein ${weeklyScore.proteinDays}/${weeklyScore.daysElapsed}  ·  Calories ${weeklyScore.calorieDays}/${weeklyScore.daysElapsed}",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    weeklyScore.weeklyWeightChangeKg?.let { change ->
+                        val status = if (change in -0.35..-0.15) "Ideal cut rate" else if (change < -0.35) "Losing quickly" else "Weight trend ${if (change >= 0) "+" else ""}${change.pretty()} kg/week"
+                        Text(if (status.startsWith("Weight trend")) "Weight trend ${if (change >= 0) "+" else ""}${change.displayWeight(settings).pretty()} ${settings.weightUnit}/week" else status, fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
+                    }
                 }
             }
         }
@@ -689,12 +715,7 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
                             }
                             if (todayWorkouts.isNotEmpty()) Text("${todayWorkouts.size} session${if (todayWorkouts.size == 1) "" else "s"} today", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        IconButton(
-                            onClick = { onNavigate(Destination.Workouts.route) },
-                            modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.onSurface, CircleShape),
-                        ) {
-                            Icon(Icons.Outlined.ArrowOutward, "Open workouts", tint = MaterialTheme.colorScheme.surface)
-                        }
+                        TextButton(onClick = { onNavigate(Destination.Workouts.route) }) { Text("History") }
                     }
             }
         }
@@ -757,13 +778,13 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
                     Text("Nothing logged yet", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        MetricInline(calories.pretty(), "kcal")
+                        MetricInline(calories, "kcal")
                         Box(Modifier.width(1.dp).height(34.dp).background(MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)))
-                        MetricInline(protein.pretty(), "g protein")
+                        MetricInline(protein, "g protein")
                     }
                     Text(
-                        "${calories.pretty()}${if (settings.nutritionGoalsConfirmed && settings.calorieTarget > 0) " / ${settings.calorieTarget}" else ""} kcal · " +
-                            "${protein.pretty()}${if (settings.nutritionGoalsConfirmed && settings.proteinTarget > 0) " / ${settings.proteinTarget}" else ""}g protein",
+                        "$calories${if (settings.nutritionGoalsConfirmed && settings.calorieTarget > 0) " / ${settings.calorieTarget}" else ""} kcal · " +
+                            "$protein${if (settings.nutritionGoalsConfirmed && settings.proteinTarget > 0) " / ${settings.proteinTarget}" else ""}g protein",
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -778,20 +799,15 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
                     }
                     IconButton(onClick = { onNavigate(Destination.Body.route) }) { Icon(Icons.Outlined.ArrowOutward, "Open body") }
                 }
-                Text(measurements.firstOrNull()?.weightKg?.pretty() ?: "—", fontSize = 30.sp)
-                Text(if (measurements.isEmpty()) "No measurements yet" else "kg · latest reading", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val latestWeight = measurements.firstOrNull { it.weightKg != null }?.weightKg
+                Text(latestWeight?.displayWeight(settings)?.pretty() ?: "—", fontSize = 30.sp)
+                Text(if (latestWeight == null) "No weigh-ins yet" else "${settings.weightUnit} · latest reading", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("QUICK LOG", fontSize = 11.sp, letterSpacing = 1.6.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    QuickLogButton("Workout") { onNavigate(Destination.Workouts.route) }
-                    QuickLogButton("Food") { onNavigate(Destination.Food.route) }
-                    QuickLogButton("Measurement") { showMeasurement = true }
-                }
-            }
-        }
+    }
+    if (showWorkout) WorkoutDialog(onDismiss = { showWorkout = false }) { value ->
+        showWorkout = false
+        viewModel.addWorkout(value, onCreated = onOpenWorkout)
     }
     if (showMeasurement) {
         MeasurementDialog(settings, onDismiss = { showMeasurement = false }) {
@@ -838,7 +854,7 @@ private fun QuickLogButton(label: String, onClick: () -> Unit) {
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)),
         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp),
-    ) { Icon(Icons.Outlined.Add, null, Modifier.size(15.dp), tint = Clay); Spacer(Modifier.width(5.dp)); Text(label, fontSize = 13.sp) }
+    ) { Icon(Icons.Outlined.Add, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.secondary); Spacer(Modifier.width(5.dp)); Text(label, fontSize = 13.sp) }
 }
 
 @Composable
@@ -856,7 +872,8 @@ private fun WorkoutsScreen(
         "Training",
         "Workouts",
         "Each session holds the sets you logged that day.",
-        action = { HeaderAddButton("New") { showAdd = true } },
+        action = { HeaderAddButton("Start workout") { showAdd = true } },
+        showHeader = false,
     ) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("LIBRARY", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -874,6 +891,7 @@ private fun WorkoutsScreen(
                         Column(Modifier.weight(1f)) {
                             Text(workout.name ?: "Workout")
                             Text(formatDateForDisplay(workout.performedOn), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                            if (workout.finishedAt == null) Text("In progress · Resume", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelMedium)
                         }
                         IconButton(onClick = { pendingDelete = workout.id }) {
                             Icon(Icons.Outlined.Delete, "Delete workout")
@@ -892,7 +910,7 @@ private fun WorkoutsScreen(
             }
     }
     if (showAdd) WorkoutDialog(onDismiss = { showAdd = false }) { workout ->
-        viewModel.addWorkout(workout)
+        viewModel.addWorkout(workout, onCreated = onOpenWorkout)
         showAdd = false
     }
     pendingDelete?.let { id -> ConfirmDeleteDialog("Delete workout?", "Sets in this workout will also be removed.", { pendingDelete = null }) { viewModel.deleteWorkout(id); pendingDelete = null } }
@@ -1043,7 +1061,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
                 Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)).padding(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Outlined.Lock, null, tint = Clay)
+                Icon(Icons.Outlined.Lock, null, tint = MaterialTheme.colorScheme.secondary)
                 Column(Modifier.weight(1f).padding(start = 10.dp)) {
                     Text("Progress photos", style = MaterialTheme.typography.titleMedium)
                     Text("Locked", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1138,7 +1156,7 @@ private fun BodyScreen(viewModel: AppViewModel, settings: AppSettings) {
             ) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("LATEST", fontSize = 10.sp, letterSpacing = 1.4.sp, color = Clay)
+                        Text("LATEST", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.secondary)
                         Text(formatDateForDisplay(latest.measuredOn), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     IconButton(onClick = { pendingMeasurement = latest }, modifier = Modifier.size(36.dp)) {
@@ -1442,7 +1460,7 @@ private fun ProgressPhotoComparison(first: ProgressPhotoEntity, latest: Progress
 @Composable
 private fun ComparisonPhoto(label: String, photo: ProgressPhotoEntity, revision: Int, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        Text(label, fontSize = 10.sp, letterSpacing = 1.3.sp, color = Clay)
+        Text(label, fontSize = 10.sp, letterSpacing = 1.3.sp, color = MaterialTheme.colorScheme.secondary)
         StoredProgressPhoto(
             photo,
             Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(10.dp)),
@@ -1651,7 +1669,7 @@ private fun FoodAdvice(guide: NutritionGuidance, goalName: String) {
 }
 
 @Composable
-private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings, onOpenNutritionPlan: () -> Unit) {
+private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings, onOpenNutritionPlan: () -> Unit, onOpenPhotoSettings: () -> Unit) {
     val foods by viewModel.foodEntries.collectAsStateWithLifecycle()
     val savedFoods by viewModel.savedFoods.collectAsStateWithLifecycle()
     val currentDate = today()
@@ -1665,6 +1683,8 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings, onOpenNut
     }
     val dayEntries = foodEntriesOn(foods, selectedDate)
     val dayMetrics = foodDayMetrics(foods, selectedDate)
+    val calorieLabel = nutritionTotal(dayMetrics.calories, dayMetrics.entryCount, dayMetrics.missingCalories)
+    val proteinLabel = nutritionTotal(dayMetrics.proteinG, dayMetrics.entryCount, dayMetrics.missingProtein)
     val guide = if (selectedDate == currentDate && settings.nutritionGoalsConfirmed) nutritionGuidance(
         dayEntries, savedFoods, settings.calorieTarget, settings.proteinTarget,
         listOf(settings.breakfastReminderMinutes, settings.lunchReminderMinutes, settings.dinnerReminderMinutes),
@@ -1675,6 +1695,11 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings, onOpenNut
     var photoEstimate by remember { mutableStateOf<FoodPhotoEstimate?>(null) }
     var photoPreview by remember { mutableStateOf<ImageBitmap?>(null) }
     var estimatingPhoto by remember { mutableStateOf(false) }
+    var lookingUpBarcode by remember { mutableStateOf(false) }
+    var photoSetupNeeded by remember { mutableStateOf(false) }
+    var quickAdding by remember { mutableStateOf(emptySet<Long>()) }
+    var reviewingSavedFood by remember { mutableStateOf<SavedFoodEntity?>(null) }
+    val snackbar = remember { SnackbarHostState() }
     var cameraCaptureUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var pendingFood by remember { mutableStateOf<FoodEntryEntity?>(null) }
@@ -1744,7 +1769,8 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings, onOpenNut
     }
     val requireGeminiKey: () -> Boolean = {
         if (settings.geminiApiKey.isBlank()) {
-            message = "Add a Gemini API key in Settings first"
+            message = "Add a Gemini API key to use photo estimates."
+            photoSetupNeeded = true
             false
         } else true
     }
@@ -1765,6 +1791,7 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings, onOpenNut
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     Page(
         "Nutrition",
         "Food",
@@ -1777,24 +1804,27 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings, onOpenNut
                 Row(Modifier.fillMaxWidth()) {
                     Text(if (selectedDate == currentDate) "Today" else "Daily totals", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        if (settings.nutritionGoalsConfirmed && settings.calorieTarget > 0) "${dayMetrics.calories.pretty()} / ${settings.calorieTarget} kcal"
-                        else "${dayMetrics.calories.pretty()} kcal logged",
+                        if (settings.nutritionGoalsConfirmed && settings.calorieTarget > 0) "$calorieLabel / ${settings.calorieTarget} kcal"
+                        else "$calorieLabel kcal logged",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (settings.nutritionGoalsConfirmed && settings.calorieTarget > 0) LinearProgressIndicator(progress = { (dayMetrics.calories / settings.calorieTarget).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = Clay)
+                if (settings.nutritionGoalsConfirmed && settings.calorieTarget > 0) LinearProgressIndicator(progress = { (dayMetrics.calories / settings.calorieTarget).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.secondary)
                 Row(Modifier.fillMaxWidth()) {
                     Text("Protein", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                     Text(
-                        if (settings.nutritionGoalsConfirmed && settings.proteinTarget > 0) "${dayMetrics.proteinG.pretty()} / ${settings.proteinTarget} g"
-                        else "${dayMetrics.proteinG.pretty()} g logged",
+                        if (settings.nutritionGoalsConfirmed && settings.proteinTarget > 0) "$proteinLabel / ${settings.proteinTarget} g"
+                        else "$proteinLabel g logged",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 if (settings.nutritionGoalsConfirmed && settings.proteinTarget > 0) LinearProgressIndicator(progress = { (dayMetrics.proteinG / settings.proteinTarget).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    Text("Carbs ${dayMetrics.carbsG.pretty()} g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Fat ${dayMetrics.fatG.pretty()} g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Carbs ${nutritionTotal(dayMetrics.carbsG, dayMetrics.entryCount, dayMetrics.missingCarbs)} g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Fat ${nutritionTotal(dayMetrics.fatG, dayMetrics.entryCount, dayMetrics.missingFat)} g", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (listOf(dayMetrics.missingCalories, dayMetrics.missingProtein, dayMetrics.missingCarbs, dayMetrics.missingFat).any { it > 0 }) {
+                    Text("Some values aren't entered. — means unknown; ≥ totals include entered values only.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (selectedDate != currentDate && settings.nutritionGoalsConfirmed) {
                     Text("Compared with your current goals", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1814,22 +1844,27 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings, onOpenNut
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FoodCaptureButton(
-                    label = "Barcode",
+                    label = if (lookingUpBarcode) "Looking up…" else "Barcode",
                     icon = Icons.Outlined.QrCodeScanner,
                     onClick = {
+                        message = null
+                        photoSetupNeeded = false
                         scanner.startScan()
                             .addOnSuccessListener { barcode ->
                                 barcode.rawValue?.let { code ->
                                     scope.launch {
-                                        viewModel.lookupBarcode(code)
+                                        lookingUpBarcode = true
+                                        try { viewModel.lookupBarcode(code)
                                             .onSuccess { scannedProduct = it }
                                             .onFailure { message = it.message ?: "Product lookup failed" }
+                                        } finally { lookingUpBarcode = false }
                                     }
                                 }
                             }
                             .addOnFailureListener { message = it.message ?: "Scanner unavailable" }
                     },
                     modifier = Modifier.weight(1f),
+                    enabled = !lookingUpBarcode,
                 )
                 FoodCaptureButton(
                     label = "Camera",
@@ -1853,6 +1888,12 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings, onOpenNut
             if (estimatingPhoto) {
                 Text("Estimating macros…", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (photoSetupNeeded && settings.geminiApiKey.isBlank()) TextButton(onClick = {
+                message = null
+                photoSetupNeeded = false
+                onOpenPhotoSettings()
+            }) { Text("Set up photo estimates") }
             if (savedFoods.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Quick add", style = MaterialTheme.typography.titleMedium)
@@ -1875,9 +1916,26 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings, onOpenNut
                             }
                             IconButton(
                                 onClick = {
-                                    viewModel.addFood(FoodEntryEntity(consumedOn = selectedDate, name = saved.name, calories = saved.calories, proteinG = saved.proteinG, carbsG = saved.carbsG, fatG = saved.fatG))
+                                    if (!saved.readyForQuickAdd()) reviewingSavedFood = saved
+                                    else scope.launch {
+                                        quickAdding = quickAdding + saved.id
+                                        val added = try {
+                                            viewModel.quickAddFood(FoodEntryEntity(consumedOn = selectedDate, name = saved.name, calories = saved.calories, proteinG = saved.proteinG, carbsG = saved.carbsG, fatG = saved.fatG))
+                                        } catch (cancel: CancellationException) {
+                                            throw cancel
+                                        } catch (_: Exception) {
+                                            snackbar.showSnackbar("Couldn't add food. Please try again.")
+                                            return@launch
+                                        } finally { quickAdding = quickAdding - saved.id }
+                                        snackbar.currentSnackbarData?.dismiss()
+                                        val day = if (added.consumedOn == currentDate) "Today" else formatDateShort(added.consumedOn)
+                                        if (snackbar.showSnackbar("Added ${saved.name} to $day", actionLabel = "Undo", withDismissAction = true) == SnackbarResult.ActionPerformed) {
+                                            viewModel.deleteFood(added)
+                                        }
+                                    }
                                 },
                                 modifier = Modifier.size(48.dp),
+                                enabled = saved.id !in quickAdding,
                             ) {
                                 Icon(
                                     Icons.Outlined.Add,
@@ -1905,7 +1963,6 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings, onOpenNut
                     }
                 }
             }
-            message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (dayEntries.isEmpty()) {
                 EmptyState(
                     if (selectedDate == currentDate) "No food logged today" else "No food logged for this day",
@@ -1919,14 +1976,31 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings, onOpenNut
                             Column(Modifier.weight(1f)) {
                                 Text(food.name)
                             }
-                            Text("${(food.calories ?: 0.0).pretty()} kcal")
+                            Text(food.calories.knownNutrition()?.let { "${nutritionAmount(it)} kcal" } ?: "Calories not entered", style = MaterialTheme.typography.bodySmall)
                             IconButton(onClick = { pendingFood = food }) { Icon(Icons.Outlined.Delete, "Delete food") }
                         }
-                        Text("P ${(food.proteinG ?: 0.0).pretty()}g  ·  C ${(food.carbsG ?: 0.0).pretty()}g  ·  F ${(food.fatG ?: 0.0).pretty()}g", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("P ${nutritionAmount(food.proteinG)} g  ·  C ${nutritionAmount(food.carbsG)} g  ·  F ${nutritionAmount(food.fatG)} g", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (index < dayEntries.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
                 }
             }
+    }
+    SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp)) { data ->
+        Snackbar(
+            snackbarData = data,
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            actionColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            dismissActionContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+    }
+    }
+    reviewingSavedFood?.let { saved ->
+        FoodDialog(product = null, initialDate = selectedDate, savedFood = saved, onDismiss = { reviewingSavedFood = null }) { food, save ->
+            viewModel.addFood(food, save)
+            selectedDate = food.consumedOn
+            reviewingSavedFood = null
+        }
     }
     if (showAdd) FoodDialog(product = null, initialDate = selectedDate, onDismiss = { showAdd = false }) { food, save ->
         viewModel.addFood(food, save); selectedDate = food.consumedOn; showAdd = false
@@ -1984,21 +2058,43 @@ private fun EmptyState(title: String, subtitle: String) {
 }
 
 @Composable
-internal fun AppField(value: String, onValueChange: (String) -> Unit, label: String, modifier: Modifier = Modifier) {
+internal fun AppField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    error: String? = null,
+) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
         modifier = modifier.fillMaxWidth(),
         singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        isError = error != null,
+        supportingText = if (error != null) { { Text(error) } } else null,
         shape = RoundedCornerShape(8.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = MaterialTheme.colorScheme.surface,
             unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-            focusedBorderColor = Clay,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+            focusedBorderColor = MaterialTheme.colorScheme.secondary,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
         ),
     )
+}
+
+@Composable
+private fun NumberField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    allowZero: Boolean = true,
+    maximum: Double? = null,
+) {
+    AppField(value, onValueChange, label, modifier, KeyboardType.Decimal, numberInputError(value, allowZero, maximum))
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -2013,6 +2109,7 @@ internal fun FormSheet(
     primaryHeight: Dp = 50.dp,
     dismissLabel: String = "Cancel",
     scrollKey: Int = 0,
+    compact: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scrollState = rememberScrollState()
@@ -2029,7 +2126,7 @@ internal fun FormSheet(
         Column(
             Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.92f)
+                .then(if (compact) Modifier.heightIn(max = LocalConfiguration.current.screenHeightDp.dp * 0.92f) else Modifier.fillMaxHeight(0.92f))
                 .navigationBarsPadding()
                 .imePadding()
                 .padding(horizontal = 20.dp, vertical = 20.dp),
@@ -2040,7 +2137,7 @@ internal fun FormSheet(
                 Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Column(
-                Modifier.weight(1f).verticalScroll(scrollState),
+                Modifier.weight(1f, fill = !compact).verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 content = content,
             )
@@ -2089,7 +2186,7 @@ private fun SettingsScreen(
                 Text("Back")
             }
             Spacer(Modifier.height(18.dp))
-            Text("PREFERENCES", fontSize = 10.sp, letterSpacing = 1.5.sp, color = Clay)
+            Text("PREFERENCES", fontSize = 10.sp, letterSpacing = 1.5.sp, color = MaterialTheme.colorScheme.secondary)
             Text("Settings", style = MaterialTheme.typography.headlineLarge)
         }
         item {
@@ -2190,7 +2287,7 @@ private fun GeminiKeySheet(settings: AppSettings, onDismiss: () -> Unit, onSave:
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = MaterialTheme.colorScheme.surface,
                 unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                focusedBorderColor = Clay,
+                focusedBorderColor = MaterialTheme.colorScheme.secondary,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
             ),
             trailingIcon = {
@@ -2402,47 +2499,51 @@ private fun WorkoutDialog(
     onDismiss: () -> Unit,
     onSave: (WorkoutEntity) -> Unit,
 ) {
-    var name by remember { mutableStateOf("") }
-    var date by remember { mutableStateOf(today()) }
+    var name by rememberSaveable { mutableStateOf("") }
+    var date by rememberSaveable { mutableStateOf(today()) }
     FormSheet(
         title = "New session",
-        description = "Name it, set the date, then log your sets inside.",
-        primaryLabel = "Add session",
+        description = "Start with today's date, or choose another day.",
+        primaryLabel = "Start workout",
         primaryEnabled = date.isNotBlank(),
         onPrimary = { onSave(WorkoutEntity(performedOn = date, name = name.ifBlank { null })) },
         onDismiss = onDismiss,
+        compact = true,
     ) {
-        AppField(name, { name = it }, "Session name")
+        AppField(name, { name = it }, "Session name (optional)")
         DateField(date) { date = it }
     }
 }
 
 @Composable
 private fun MeasurementDialog(settings: AppSettings, onDismiss: () -> Unit, onSave: (MeasurementEntity) -> Unit) {
-    var weight by remember { mutableStateOf("") }
-    var bodyFat by remember { mutableStateOf("") }
-    var waist by remember { mutableStateOf("") }
-    var leftArm by remember { mutableStateOf("") }
-    var rightArm by remember { mutableStateOf("") }
-    var leftThigh by remember { mutableStateOf("") }
-    var rightThigh by remember { mutableStateOf("") }
-    var date by remember { mutableStateOf(today()) }
+    var weight by rememberSaveable { mutableStateOf("") }
+    var bodyFat by rememberSaveable { mutableStateOf("") }
+    var waist by rememberSaveable { mutableStateOf("") }
+    var leftArm by rememberSaveable { mutableStateOf("") }
+    var rightArm by rememberSaveable { mutableStateOf("") }
+    var leftThigh by rememberSaveable { mutableStateOf("") }
+    var rightThigh by rememberSaveable { mutableStateOf("") }
+    var date by rememberSaveable { mutableStateOf(today()) }
+    val values = listOf(weight, bodyFat, waist, leftArm, rightArm, leftThigh, rightThigh)
+    val validNumbers = values.all { numberInputError(it, allowZero = false) == null } &&
+        numberInputError(bodyFat, allowZero = false, maximum = 100.0) == null
     FormSheet(
         title = "New measurement",
         description = "Log only what you measured today. Every field is optional.",
         primaryLabel = "Add measurement",
-        primaryEnabled = date.isNotBlank() && listOf(weight, bodyFat, waist, leftArm, rightArm, leftThigh, rightThigh).any(String::isNotBlank),
+        primaryEnabled = date.isNotBlank() && values.any(String::isNotBlank) && validNumbers,
         onPrimary = {
             onSave(
                 MeasurementEntity(
                     measuredOn = date,
-                    weightKg = weight.toDoubleOrNull()?.storageWeight(settings),
-                    bodyFatPct = bodyFat.toDoubleOrNull(),
-                    waistCm = waist.toDoubleOrNull()?.storageLength(settings),
-                    leftArmCm = leftArm.toDoubleOrNull()?.storageLength(settings),
-                    rightArmCm = rightArm.toDoubleOrNull()?.storageLength(settings),
-                    leftThighCm = leftThigh.toDoubleOrNull()?.storageLength(settings),
-                    rightThighCm = rightThigh.toDoubleOrNull()?.storageLength(settings),
+                    weightKg = decimalValue(weight)?.storageWeight(settings),
+                    bodyFatPct = decimalValue(bodyFat),
+                    waistCm = decimalValue(waist)?.storageLength(settings),
+                    leftArmCm = decimalValue(leftArm)?.storageLength(settings),
+                    rightArmCm = decimalValue(rightArm)?.storageLength(settings),
+                    leftThighCm = decimalValue(leftThigh)?.storageLength(settings),
+                    rightThighCm = decimalValue(rightThigh)?.storageLength(settings),
                 ),
             )
         },
@@ -2450,17 +2551,17 @@ private fun MeasurementDialog(settings: AppSettings, onDismiss: () -> Unit, onSa
     ) {
         DateField(date) { date = it }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            AppField(weight, { weight = it }, "Weight (${settings.weightUnit})", Modifier.weight(1f))
-            AppField(bodyFat, { bodyFat = it }, "Body fat (%)", Modifier.weight(1f))
+            NumberField(weight, { weight = it }, "Weight (${settings.weightUnit})", Modifier.weight(1f), allowZero = false)
+            NumberField(bodyFat, { bodyFat = it }, "Body fat (%)", Modifier.weight(1f), allowZero = false, maximum = 100.0)
         }
-        AppField(waist, { waist = it }, "Waist (${settings.lengthUnit})")
+        NumberField(waist, { waist = it }, "Waist (${settings.lengthUnit})", allowZero = false)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            AppField(leftArm, { leftArm = it }, "Left arm (${settings.lengthUnit})", Modifier.weight(1f))
-            AppField(rightArm, { rightArm = it }, "Right arm (${settings.lengthUnit})", Modifier.weight(1f))
+            NumberField(leftArm, { leftArm = it }, "Left arm (${settings.lengthUnit})", Modifier.weight(1f), allowZero = false)
+            NumberField(rightArm, { rightArm = it }, "Right arm (${settings.lengthUnit})", Modifier.weight(1f), allowZero = false)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            AppField(leftThigh, { leftThigh = it }, "Left thigh (${settings.lengthUnit})", Modifier.weight(1f))
-            AppField(rightThigh, { rightThigh = it }, "Right thigh (${settings.lengthUnit})", Modifier.weight(1f))
+            NumberField(leftThigh, { leftThigh = it }, "Left thigh (${settings.lengthUnit})", Modifier.weight(1f), allowZero = false)
+            NumberField(rightThigh, { rightThigh = it }, "Right thigh (${settings.lengthUnit})", Modifier.weight(1f), allowZero = false)
         }
     }
 }
@@ -2470,53 +2571,61 @@ private fun FoodDialog(
     product: BarcodeProductEntity?,
     initialDate: String,
     entry: FoodEntryEntity? = null,
+    savedFood: SavedFoodEntity? = null,
     estimate: FoodPhotoEstimate? = null,
     photoPreview: ImageBitmap? = null,
     onDismiss: () -> Unit,
     onSave: (FoodEntryEntity, Boolean) -> Unit,
 ) {
     val defaultServing = product?.servingG ?: 100.0
-    var name by remember(product, entry, estimate) {
-        mutableStateOf(entry?.name ?: estimate?.name ?: product?.name.orEmpty())
+    var name by rememberSaveable(product, entry, estimate, savedFood) {
+        mutableStateOf(entry?.name ?: savedFood?.name ?: estimate?.name ?: product?.name.orEmpty())
     }
-    var serving by remember(product) { mutableStateOf(defaultServing.pretty()) }
-    var calories by remember(product, entry, estimate) {
+    var serving by rememberSaveable(product) { mutableStateOf(defaultServing.pretty()) }
+    var calories by rememberSaveable(product, entry, estimate, savedFood) {
         mutableStateOf(
             entry?.calories?.pretty()
+                ?: savedFood?.calories?.pretty()
                 ?: estimate?.calories?.pretty()
                 ?: product?.caloriesPer100g?.times(defaultServing / 100)?.pretty().orEmpty(),
         )
     }
-    var protein by remember(product, entry, estimate) {
+    var protein by rememberSaveable(product, entry, estimate, savedFood) {
         mutableStateOf(
             entry?.proteinG?.pretty()
+                ?: savedFood?.proteinG?.pretty()
                 ?: estimate?.proteinG?.pretty()
                 ?: product?.proteinPer100g?.times(defaultServing / 100)?.pretty().orEmpty(),
         )
     }
-    var carbs by remember(product, entry, estimate) {
+    var carbs by rememberSaveable(product, entry, estimate, savedFood) {
         mutableStateOf(
             entry?.carbsG?.pretty()
+                ?: savedFood?.carbsG?.pretty()
                 ?: estimate?.carbsG?.pretty()
                 ?: product?.carbsPer100g?.times(defaultServing / 100)?.pretty().orEmpty(),
         )
     }
-    var fat by remember(product, entry, estimate) {
+    var fat by rememberSaveable(product, entry, estimate, savedFood) {
         mutableStateOf(
             entry?.fatG?.pretty()
+                ?: savedFood?.fatG?.pretty()
                 ?: estimate?.fatG?.pretty()
                 ?: product?.fatPer100g?.times(defaultServing / 100)?.pretty().orEmpty(),
         )
     }
-    var date by remember(entry, initialDate) { mutableStateOf(entry?.consumedOn ?: initialDate) }
-    var saveForReuse by remember(entry) { mutableStateOf(entry == null) }
-    var showMoreMacros by remember(estimate, entry) {
+    var date by rememberSaveable(entry, initialDate) { mutableStateOf(entry?.consumedOn ?: initialDate) }
+    var saveForReuse by rememberSaveable(entry, savedFood) { mutableStateOf(entry == null && savedFood == null) }
+    var showMoreMacros by rememberSaveable(estimate, entry, savedFood) {
         mutableStateOf(
             estimate?.carbsG != null || estimate?.fatG != null ||
-                entry?.carbsG != null || entry?.fatG != null,
+                entry?.carbsG != null || entry?.fatG != null || savedFood?.carbsG != null || savedFood?.fatG != null,
         )
     }
-    val macros = { Macros(calories.toDoubleOrNull(), protein.toDoubleOrNull(), carbs.toDoubleOrNull(), fat.toDoubleOrNull()) }
+    var showMultiplier by rememberSaveable { mutableStateOf(false) }
+    val validMacros = listOf(calories, protein, carbs, fat).all { numberInputError(it) == null }
+    val validServing = product == null || (numberInputError(serving, allowZero = false) == null && serving.isNotBlank())
+    val macros = { Macros(decimalValue(calories), decimalValue(protein), decimalValue(carbs), decimalValue(fat)) }
     val setMacros: (Macros) -> Unit = { scaled ->
         calories = scaled.calories?.pretty().orEmpty()
         protein = scaled.proteinG?.pretty().orEmpty()
@@ -2526,20 +2635,22 @@ private fun FoodDialog(
     FormSheet(
         title = when {
             entry != null -> "Edit food"
+            savedFood != null -> "Review saved food"
             estimate != null -> "Review photo estimate"
             product == null -> "Log food"
             else -> "Review scanned food"
         },
         description = when {
             estimate != null -> "Gemini estimates are rough. Check serving size and macros before saving."
-            product == null -> "Add food and its macros."
+            savedFood != null -> "Some nutrition values aren't entered. Add them if known; leave unknown values blank."
+            product == null -> "Add food and any nutrition values you know. Blank values stay unknown."
             else -> "Check the serving and nutrition before saving."
         },
         primaryLabel = if (entry == null) "Add food" else "Save changes",
-        primaryEnabled = name.isNotBlank(),
+        primaryEnabled = name.isNotBlank() && validMacros && validServing,
         onPrimary = {
-            onSave(entry?.copy(consumedOn = date, name = name.trim(), calories = calories.toDoubleOrNull(), proteinG = protein.toDoubleOrNull(), carbsG = carbs.toDoubleOrNull(), fatG = fat.toDoubleOrNull())
-                ?: FoodEntryEntity(consumedOn = date, name = name.trim(), calories = calories.toDoubleOrNull(), proteinG = protein.toDoubleOrNull(), carbsG = carbs.toDoubleOrNull(), fatG = fat.toDoubleOrNull(), barcode = product?.barcode), entry == null && saveForReuse)
+            onSave(entry?.copy(consumedOn = date, name = name.trim(), calories = decimalValue(calories), proteinG = decimalValue(protein), carbsG = decimalValue(carbs), fatG = decimalValue(fat))
+                ?: FoodEntryEntity(consumedOn = date, name = name.trim(), calories = decimalValue(calories), proteinG = decimalValue(protein), carbsG = decimalValue(carbs), fatG = decimalValue(fat), barcode = product?.barcode), entry == null && saveForReuse)
         },
         onDismiss = onDismiss,
     ) {
@@ -2556,30 +2667,33 @@ private fun FoodDialog(
             }
             AppField(name, { name = it }, "Food")
             DateField(date) { date = it }
-            if (product != null) AppField(serving, { value ->
+            if (product != null) NumberField(serving, { value ->
                 serving = value
-                value.toDoubleOrNull()?.let { grams ->
+                decimalValue(value)?.takeIf { it > 0 }?.let { grams ->
                     setMacros(scaleMacros(
                         Macros(product.caloriesPer100g, product.proteinPer100g, product.carbsPer100g, product.fatPer100g),
                         grams,
                     ))
                 }
-            }, "Serving (g)")
+            }, "Serving (g)", allowZero = false)
             Text("MACROS", fontSize = 10.sp, letterSpacing = 1.4.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                AppField(calories, { calories = it }, "Calories", Modifier.weight(1f))
-                AppField(protein, { protein = it }, "Protein (g)", Modifier.weight(1f))
+                NumberField(calories, { calories = it }, "Calories", Modifier.weight(1f))
+                NumberField(protein, { protein = it }, "Protein (g)", Modifier.weight(1f))
             }
             TextButton(onClick = { showMoreMacros = !showMoreMacros }) {
                 Text(if (showMoreMacros) "Hide carbs and fat" else "Add carbs and fat")
             }
-            if (showMoreMacros) {
+            if (showMoreMacros || numberInputError(carbs) != null || numberInputError(fat) != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    AppField(carbs, { carbs = it }, "Carbs (g)", Modifier.weight(1f))
-                    AppField(fat, { fat = it }, "Fat (g)", Modifier.weight(1f))
+                    NumberField(carbs, { carbs = it }, "Carbs (g)", Modifier.weight(1f))
+                    NumberField(fat, { fat = it }, "Fat (g)", Modifier.weight(1f))
                 }
             }
-            MacroMultiplier(macros(), setMacros)
+            TextButton(onClick = { showMultiplier = !showMultiplier }, enabled = validMacros && listOf(calories, protein, carbs, fat).any(String::isNotBlank)) {
+                Text(if (showMultiplier) "Hide serving adjustment" else "Adjust serving")
+            }
+            if (showMultiplier) MacroMultiplier(macros(), setMacros)
             if (entry == null) Row(
                 Modifier.fillMaxWidth().clickable { saveForReuse = !saveForReuse }.padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -2595,32 +2709,35 @@ private fun FoodDialog(
 
 @Composable
 private fun MacroMultiplier(macros: Macros, onChange: (Macros) -> Unit) {
-    var multiplier by remember { mutableStateOf("1") }
-    val factor = multiplier.toDoubleOrNull()?.takeIf { it > 0 }
+    var multiplier by rememberSaveable { mutableStateOf("1") }
+    val factor = decimalValue(multiplier)?.takeIf { it > 0 }
+    val scaled = factor?.let { scaleMacros(macros, it * 100) }
+    val valid = scaled != null && listOfNotNull(scaled.calories, scaled.proteinG, scaled.carbsG, scaled.fatG).all { it.isFinite() && it >= 0 }
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        AppField(multiplier, { multiplier = it.filter { character -> character.isDigit() || character == '.' } }, "Multiply by", Modifier.weight(1f))
-        Button(onClick = { factor?.let { onChange(scaleMacros(macros, it * 100)) } }, enabled = factor != null) { Text("Apply") }
+        NumberField(multiplier, { multiplier = it }, "Multiply by", Modifier.weight(1f), allowZero = false)
+        TextButton(onClick = { scaled?.let(onChange) }, enabled = valid) { Text("Apply") }
     }
 }
 
 @Composable
 private fun SavedFoodDialog(value: SavedFoodEntity, onDismiss: () -> Unit, onSave: (SavedFoodEntity) -> Unit) {
-    var name by remember(value) { mutableStateOf(value.name) }
-    var calories by remember(value) { mutableStateOf(value.calories?.pretty().orEmpty()) }
-    var protein by remember(value) { mutableStateOf(value.proteinG?.pretty().orEmpty()) }
-    var carbs by remember(value) { mutableStateOf(value.carbsG?.pretty().orEmpty()) }
-    var fat by remember(value) { mutableStateOf(value.fatG?.pretty().orEmpty()) }
-    FormSheet("Edit saved food", "Used by Quick add.", "Save changes", name.isNotBlank(), {
-        onSave(value.copy(name = name.trim(), calories = calories.toDoubleOrNull(), proteinG = protein.toDoubleOrNull(), carbsG = carbs.toDoubleOrNull(), fatG = fat.toDoubleOrNull()))
+    var name by rememberSaveable(value) { mutableStateOf(value.name) }
+    var calories by rememberSaveable(value) { mutableStateOf(value.calories?.pretty().orEmpty()) }
+    var protein by rememberSaveable(value) { mutableStateOf(value.proteinG?.pretty().orEmpty()) }
+    var carbs by rememberSaveable(value) { mutableStateOf(value.carbsG?.pretty().orEmpty()) }
+    var fat by rememberSaveable(value) { mutableStateOf(value.fatG?.pretty().orEmpty()) }
+    val valid = listOf(calories, protein, carbs, fat).all { numberInputError(it) == null }
+    FormSheet("Edit saved food", "Used by Quick add. Blank nutrition values stay unknown.", "Save changes", name.isNotBlank() && valid, {
+        onSave(value.copy(name = name.trim(), calories = decimalValue(calories), proteinG = decimalValue(protein), carbsG = decimalValue(carbs), fatG = decimalValue(fat)))
     }, onDismiss) {
         AppField(name, { name = it }, "Food")
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            AppField(calories, { calories = it }, "Calories", Modifier.weight(1f))
-            AppField(protein, { protein = it }, "Protein (g)", Modifier.weight(1f))
+            NumberField(calories, { calories = it }, "Calories", Modifier.weight(1f))
+            NumberField(protein, { protein = it }, "Protein (g)", Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            AppField(carbs, { carbs = it }, "Carbs (g)", Modifier.weight(1f))
-            AppField(fat, { fat = it }, "Fat (g)", Modifier.weight(1f))
+            NumberField(carbs, { carbs = it }, "Carbs (g)", Modifier.weight(1f))
+            NumberField(fat, { fat = it }, "Fat (g)", Modifier.weight(1f))
         }
     }
 }

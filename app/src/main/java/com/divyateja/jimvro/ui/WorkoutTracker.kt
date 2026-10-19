@@ -102,7 +102,6 @@ import com.divyateja.jimvro.data.PreviousSet
 import com.divyateja.jimvro.data.WorkoutSetDetail
 import com.divyateja.jimvro.domain.progressionSuggestion
 import com.divyateja.jimvro.ui.theme.Clay
-import com.divyateja.jimvro.ui.theme.ClayMuted
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -115,6 +114,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
     val pagerState = rememberPagerState(pageCount = { groups.size.coerceAtLeast(1) })
     var showAddExercise by remember { mutableStateOf(false) }
     var showSummary by remember { mutableStateOf(false) }
+    var confirmFinish by remember { mutableStateOf(false) }
     var showSaveTemplate by remember { mutableStateOf(false) }
     var templateName by remember { mutableStateOf("") }
     var editingFinished by remember { mutableStateOf(false) }
@@ -221,7 +221,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
 
         if (!finished && restRemaining > 0) item {
             Row(
-                Modifier.fillMaxWidth().background(ClayMuted.copy(alpha = 0.4f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
+                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Rest", Modifier.weight(1f), fontSize = 13.sp)
@@ -237,7 +237,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                     Modifier.fillMaxWidth().background(Clay.copy(alpha = 0.14f), RoundedCornerShape(10.dp)).padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("NEW PR", fontSize = 10.sp, letterSpacing = 1.2.sp, color = Clay)
+                    Text("NEW PR", fontSize = 10.sp, letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.secondary)
                     Spacer(Modifier.width(12.dp))
                     Text(message, fontSize = 13.sp)
                 }
@@ -370,7 +370,10 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
                 )
             }
             Button(
-                onClick = { viewModel.finishWorkout(workoutId); showSummary = true },
+                onClick = {
+                    if (sets.any { !it.isCompleted }) confirmFinish = true
+                    else { viewModel.finishWorkout(workoutId); showSummary = true }
+                },
                 enabled = sets.isNotEmpty(),
                 modifier = Modifier.height(48.dp),
                 shape = RoundedCornerShape(8.dp),
@@ -393,13 +396,27 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
             },
         )
     }
+    if (confirmFinish) {
+        val remaining = sets.count { !it.isCompleted }
+        AlertDialog(
+            onDismissRequest = { confirmFinish = false },
+            title = { Text("Finish with $remaining set${if (remaining == 1) "" else "s"} unlogged?") },
+            text = { Text("Only completed sets count toward your workout totals. You can keep training to log the rest.") },
+            confirmButton = { TextButton(onClick = {
+                confirmFinish = false
+                viewModel.finishWorkout(workoutId)
+                showSummary = true
+            }) { Text("Finish workout") } },
+            dismissButton = { TextButton(onClick = { confirmFinish = false }) { Text("Keep training") } },
+        )
+    }
     if (showSummary) {
         AlertDialog(
             onDismissRequest = { showSummary = false },
             title = { Text("Workout complete") },
             text = { Text("${elapsedSeconds.sessionDuration()} · $completed sets · ${totalVolume.prettyTracker()} kg volume · ${groups.size} exercises") },
             confirmButton = { TextButton(onClick = { showSummary = false; onBack() }) { Text("Done") } },
-            dismissButton = { TextButton(onClick = { showSummary = false }) { Text("Stay") } },
+            dismissButton = { TextButton(onClick = { showSummary = false }) { Text("View workout") } },
         )
     }
     if (showSaveTemplate) {
@@ -555,12 +572,12 @@ private fun PreviousPerformance(
     Column(
         Modifier
             .fillMaxWidth()
-            .background(ClayMuted.copy(alpha = 0.22f), RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(12.dp))
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Row(Modifier.fillMaxWidth()) {
-            Text("LAST TIME", Modifier.weight(1f), fontSize = 10.sp, letterSpacing = 1.3.sp, color = Clay)
+            Text("LAST TIME", Modifier.weight(1f), fontSize = 10.sp, letterSpacing = 1.3.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
             Text(formatDateForDisplay(previous.first().performedOn), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(
@@ -573,7 +590,7 @@ private fun PreviousPerformance(
                 if (it.increase) "Next: ${it.weightKg.prettyTracker()} kg · top of range reached"
                 else "Next: ${it.weightKg.prettyTracker()} kg · build toward ${targetRepHigh} reps",
                 fontSize = 12.sp,
-                color = Clay,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
         }
     }
@@ -806,7 +823,7 @@ private fun MuscleGroupPickerSheet(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(group.replaceFirstChar(Char::uppercase), Modifier.weight(1f), fontSize = 16.sp)
-                    if (group == current) Icon(Icons.Outlined.Check, null, tint = Clay)
+                    if (group == current) Icon(Icons.Outlined.Check, null, tint = MaterialTheme.colorScheme.secondary)
                 }
                 if (group != MUSCLE_GROUPS.last()) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
             }
