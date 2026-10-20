@@ -13,10 +13,15 @@ class ThemeContrastTest {
     }
 
     @Test fun `accent text and selected calendar dates meet normal text contrast in both themes`() {
-        listOf(LightColors, DarkColors).forEach { colors ->
-            assertTrue(contrast(colors.secondary, colors.background) >= 4.5f)
-            assertTrue(contrast(colors.secondary, colors.surface) >= 4.5f)
-            assertTrue(contrast(colors.onSecondaryContainer, colors.secondaryContainer) >= 4.5f)
+        AccentColor.entries.forEach { accent ->
+            listOf(false, true).forEach { dark ->
+                val colors = accentColorScheme(dark, accent)
+                val description = "$accent, dark=$dark"
+                assertTrue(description, contrast(colors.secondary, colors.background) >= 4.5f)
+                assertTrue(description, contrast(colors.secondary, colors.surface) >= 4.5f)
+                assertTrue(description, contrast(colors.onSecondary, colors.secondary) >= 4.5f)
+                assertTrue(description, contrast(colors.onSecondaryContainer, colors.secondaryContainer) >= 4.5f)
+            }
         }
     }
 

@@ -1,7 +1,7 @@
 package com.divyateja.jimvro.ui.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -75,8 +75,26 @@ internal val DarkColors = darkColorScheme(
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
+internal fun accentColorScheme(dark: Boolean, accent: AccentColor): ColorScheme {
+    val palette = accentPalette(accent, dark)
+    return (if (dark) DarkColors else LightColors).copy(
+        secondary = palette.color,
+        onSecondary = palette.onColor,
+        secondaryContainer = palette.container,
+        onSecondaryContainer = palette.onContainer,
+        tertiary = palette.color,
+        onTertiary = palette.onColor,
+        tertiaryContainer = palette.container,
+        onTertiaryContainer = palette.onContainer,
+    )
+}
+
 @Composable
-fun JimvroTheme(themeMode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> Unit) {
+fun JimvroTheme(
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    accentColor: AccentColor = AccentColor.OLIVE,
+    content: @Composable () -> Unit,
+) {
     val darkTheme = when (themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
@@ -84,7 +102,7 @@ fun JimvroTheme(themeMode: ThemeMode = ThemeMode.SYSTEM, content: @Composable ()
     }
     val baseTypography = androidx.compose.material3.Typography()
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
+        colorScheme = accentColorScheme(darkTheme, accentColor),
         typography = baseTypography.copy(
             displaySmall = baseTypography.displaySmall.copy(fontSize = 36.sp, lineHeight = 40.sp, fontWeight = FontWeight.Normal, letterSpacing = (-0.5).sp),
             headlineLarge = baseTypography.headlineLarge.copy(fontSize = 30.sp, lineHeight = 35.sp, fontWeight = FontWeight.Normal, letterSpacing = (-0.35).sp),

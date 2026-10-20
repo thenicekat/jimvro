@@ -19,12 +19,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.divyateja.jimvro.ui.theme.Clay
 
 data class ChartPoint(val label: String, val value: Double)
 
 @Composable
-fun LineTrendChart(points: List<ChartPoint>, modifier: Modifier = Modifier, color: Color = Clay) {
+fun LineTrendChart(points: List<ChartPoint>, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.secondary) {
     if (points.size < 2) return
     val grid = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
     val text = MaterialTheme.colorScheme.onSurfaceVariant
@@ -61,6 +60,7 @@ fun VolumeBarChart(points: List<ChartPoint>, modifier: Modifier = Modifier) {
     if (points.isEmpty()) return
     val max = points.maxOf { it.value }.coerceAtLeast(1.0)
     val empty = MaterialTheme.colorScheme.surfaceVariant
+    val accent = MaterialTheme.colorScheme.secondary
     Column(modifier) {
         Canvas(Modifier.fillMaxWidth().height(110.dp)) {
             val gap = 8.dp.toPx()
@@ -69,7 +69,7 @@ fun VolumeBarChart(points: List<ChartPoint>, modifier: Modifier = Modifier) {
                 val rawHeight = (point.value / max).toFloat() * size.height
                 val height = if (point.value > 0) rawHeight.coerceAtLeast(6.dp.toPx()) else 2.dp.toPx()
                 drawRoundRect(
-                    color = if (point.value > 0) Clay else empty,
+                    color = if (point.value > 0) accent else empty,
                     topLeft = Offset(index * (width + gap), size.height - height),
                     size = Size(width, height),
                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()),

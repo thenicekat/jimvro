@@ -9,7 +9,6 @@ import androidx.activity.ComponentActivity
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import android.content.res.Configuration
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -43,6 +42,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -74,6 +75,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
@@ -120,6 +122,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.drawBehind
@@ -127,6 +130,10 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
@@ -177,7 +184,8 @@ import com.divyateja.jimvro.domain.NutritionGoal
 import com.divyateja.jimvro.domain.nutritionGuidance
 import com.divyateja.jimvro.domain.scaleMacros
 import com.divyateja.jimvro.domain.weeklyScore
-import com.divyateja.jimvro.ui.theme.Clay
+import com.divyateja.jimvro.ui.theme.AccentColor
+import com.divyateja.jimvro.ui.theme.accentPalette
 import com.divyateja.jimvro.ui.theme.ThemeMode
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
@@ -205,7 +213,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 private enum class Destination(val route: String, val label: String, val icon: ImageVector) {
-    Today("today", "Today", Icons.Outlined.Home),
+    Home("today", "Home", Icons.Outlined.Home),
     Workouts("workouts", "Workouts", Icons.Outlined.FitnessCenter),
     Body("body", "Body", Icons.Outlined.Scale),
     Food("food", "Food", Icons.Outlined.Restaurant),
@@ -219,10 +227,6 @@ private val progressPhotoPoses = listOf("Front", "Side", "Back", "Other")
 internal fun ProgressPhotoEntity.poseLabel(): String? =
     notes?.substringBefore(" · ")?.takeIf { it in progressPhotoPoses }
 
-@Suppress("DEPRECATION")
-private fun Configuration.primaryLocale(): Locale =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) locales[0] else locale
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JimvroApp(
@@ -234,10 +238,10 @@ fun JimvroApp(
 ) {
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
-    val currentRoute = backStack?.destination?.route ?: Destination.Today.route
+    val currentRoute = backStack?.destination?.route ?: Destination.Home.route
     val isStandaloneScreen = currentRoute.startsWith("workout/") || currentRoute in setOf("settings", "calendar")
     val current = Destination.entries.firstOrNull { it.route == currentRoute }
-        ?: if (currentRoute.startsWith("workout/") || currentRoute.startsWith("exercise/") || currentRoute == "templates" || currentRoute == "records") Destination.Workouts else Destination.Today
+        ?: if (currentRoute.startsWith("workout/") || currentRoute.startsWith("exercise/") || currentRoute == "templates" || currentRoute == "records") Destination.Workouts else Destination.Home
     val navigateRoot: (String) -> Unit = { route ->
         navController.navigate(route) {
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -355,7 +359,7 @@ fun JimvroApp(
         topBar = {
             if (!isStandaloneScreen) {
             TopAppBar(
-                title = { Text(current.label, fontSize = 16.sp) },
+                title = {},
                 actions = {
                     IconButton(
                         onClick = { navController.navigate("settings") },
@@ -392,15 +396,15 @@ fun JimvroApp(
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = Destination.Today.route,
+            startDestination = Destination.Home.route,
             modifier = Modifier.padding(padding),
             enterTransition = { EnterTransition.None },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
             popExitTransition = { ExitTransition.None },
         ) {
-            composable(Destination.Today.route) {
-                TodayScreen(viewModel, navigateRoot, settings, onOpenWorkout = { id -> navController.navigate("workout/$id") })
+            composable(Destination.Home.route) {
+                HomeScreen(viewModel, navigateRoot, settings, onOpenWorkout = { id -> navController.navigate("workout/$id") })
             }
             composable(Destination.Workouts.route) {
                 WorkoutsScreen(
@@ -428,6 +432,8 @@ fun JimvroApp(
                 SettingsScreen(
                     themeMode = themeMode,
                     onThemeModeChange = onThemeModeChange,
+                    accentColor = settings.accentColor,
+                    onAccentColorChange = { onSettingsChange(settings.copy(accentColor = it)) },
                     onBack = { navController.popBackStack() },
                     onGoals = { settingsOpen = true },
                     onFoodPlan = { nutritionPlanOpen = true },
@@ -601,7 +607,7 @@ internal fun JournalCard(modifier: Modifier = Modifier, content: @Composable Col
 }
 
 @Composable
-private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, settings: AppSettings, onOpenWorkout: (Long) -> Unit) {
+private fun HomeScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, settings: AppSettings, onOpenWorkout: (Long) -> Unit) {
     val workouts by viewModel.workouts.collectAsStateWithLifecycle()
     val measurements by viewModel.measurements.collectAsStateWithLifecycle()
     val foods by viewModel.foodEntries.collectAsStateWithLifecycle()
@@ -612,7 +618,6 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
     val nutrition = foodDayMetrics(foods, date)
     val calories = nutritionTotal(nutrition.calories, nutrition.entryCount, nutrition.missingCalories)
     val protein = nutritionTotal(nutrition.proteinG, nutrition.entryCount, nutrition.missingProtein)
-    val locale = LocalConfiguration.current.primaryLocale()
     val todayWorkouts = workouts.filter { it.performedOn == date }
     val volume = todayWorkouts.sumOf { it.volumeKg }
     val weeklyVolume = remember(workouts) { weeklyVolumePoints(workouts) }
@@ -634,16 +639,7 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
         verticalArrangement = Arrangement.spacedBy(22.dp),
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    SimpleDateFormat("EEEE, d MMMM", locale).format(Date()).uppercase(locale),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Normal,
-                    letterSpacing = 2.2.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(greeting, fontSize = 38.sp, fontWeight = FontWeight.Light, lineHeight = 42.sp, letterSpacing = (-0.6).sp)
-            }
+            Text(greeting, fontSize = 38.sp, fontWeight = FontWeight.Light, lineHeight = 42.sp, letterSpacing = (-0.6).sp)
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -753,7 +749,7 @@ private fun TodayScreen(viewModel: AppViewModel, onNavigate: (String) -> Unit, s
                                 Modifier
                                     .fillMaxHeight()
                                     .fillMaxWidth((entry.volumeKg / maxVolume).toFloat().coerceIn(0f, 1f))
-                                    .background(Clay, RoundedCornerShape(3.dp))
+                                    .background(MaterialTheme.colorScheme.secondary, RoundedCornerShape(3.dp))
                             )
                         }
                         Column(horizontalAlignment = Alignment.End) {
@@ -1601,11 +1597,12 @@ private fun FoodCaptureButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    loading: Boolean = false,
 ) {
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.heightIn(min = 80.dp),
+        modifier = modifier.heightIn(min = 48.dp),
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -1613,11 +1610,11 @@ private fun FoodCaptureButton(
         ),
         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.height(4.dp))
-            Text(label, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, maxLines = 2)
-        }
+        if (loading) CircularProgressIndicator(
+            modifier = Modifier.size(20.dp).semantics { contentDescription = label },
+            color = MaterialTheme.colorScheme.onSurface,
+            strokeWidth = 2.dp,
+        ) else Icon(icon, contentDescription = label, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -1844,7 +1841,7 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings, onOpenNut
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FoodCaptureButton(
-                    label = if (lookingUpBarcode) "Looking up…" else "Barcode",
+                    label = "Barcode",
                     icon = Icons.Outlined.QrCodeScanner,
                     onClick = {
                         message = null
@@ -1865,6 +1862,7 @@ private fun FoodScreen(viewModel: AppViewModel, settings: AppSettings, onOpenNut
                     },
                     modifier = Modifier.weight(1f),
                     enabled = !lookingUpBarcode,
+                    loading = lookingUpBarcode,
                 )
                 FoodCaptureButton(
                     label = "Camera",
@@ -2162,6 +2160,8 @@ internal fun FormSheet(
 private fun SettingsScreen(
     themeMode: ThemeMode,
     onThemeModeChange: (ThemeMode) -> Unit,
+    accentColor: AccentColor,
+    onAccentColorChange: (AccentColor) -> Unit,
     onBack: () -> Unit,
     onGoals: () -> Unit,
     onFoodPlan: () -> Unit,
@@ -2205,6 +2205,7 @@ private fun SettingsScreen(
                         ) { Text(mode.name.lowercase().replaceFirstChar(Char::uppercase), fontSize = 12.sp) }
                     }
                 }
+                AccentColorPicker(accentColor, onAccentColorChange)
                 SettingsActionRow("Goals & units", "Weight, measurements, nutrition, and rest timer", onGoals)
                 SettingsActionRow("Food plan", foodPlanSummary, onFoodPlan)
             }
@@ -2235,6 +2236,32 @@ private fun SettingsScreen(
             SettingsSection("YOUR DATA") {
                 SettingsActionRow("Backup database", "Complete local backup", onBackup)
                 SettingsActionRow("Restore database", "Replace local data from backup", onRestore)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AccentColorPicker(selected: AccentColor, onSelect: (AccentColor) -> Unit) {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Accent color", style = MaterialTheme.typography.bodyMedium)
+        Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AccentColor.entries.forEach { accent ->
+                val palette = accentPalette(accent, dark)
+                Column(
+                    Modifier.weight(1f).heightIn(min = 64.dp)
+                        .selectable(selected == accent, role = Role.RadioButton, onClick = { onSelect(accent) })
+                        .semantics(mergeDescendants = true) { contentDescription = "${accent.label} accent" }
+                        .padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Box(Modifier.size(28.dp).background(palette.color, CircleShape), contentAlignment = Alignment.Center) {
+                        if (selected == accent) Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = palette.onColor)
+                    }
+                    Text(accent.label, Modifier.clearAndSetSemantics {}, style = MaterialTheme.typography.labelMedium)
+                }
             }
         }
     }

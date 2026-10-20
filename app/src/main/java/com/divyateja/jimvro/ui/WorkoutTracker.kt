@@ -101,7 +101,6 @@ import com.divyateja.jimvro.data.ExerciseEntity
 import com.divyateja.jimvro.data.PreviousSet
 import com.divyateja.jimvro.data.WorkoutSetDetail
 import com.divyateja.jimvro.domain.progressionSuggestion
-import com.divyateja.jimvro.ui.theme.Clay
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -234,7 +233,7 @@ fun WorkoutTrackerScreen(viewModel: AppViewModel, workoutId: Long, settings: App
         prMessage?.let { message ->
             item {
                 Row(
-                    Modifier.fillMaxWidth().background(Clay.copy(alpha = 0.14f), RoundedCornerShape(10.dp)).padding(14.dp),
+                    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f), RoundedCornerShape(10.dp)).padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("NEW PR", fontSize = 10.sp, letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.secondary)

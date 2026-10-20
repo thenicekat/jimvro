@@ -5,11 +5,15 @@ import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -26,6 +30,8 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.room.Room
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.Color
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
 import com.divyateja.jimvro.AppViewModel
@@ -35,9 +41,12 @@ import com.divyateja.jimvro.data.JimvroRepository
 import com.divyateja.jimvro.data.WorkoutEntity
 import com.divyateja.jimvro.data.WorkoutSetEntity
 import com.divyateja.jimvro.ui.theme.JimvroTheme
+import com.divyateja.jimvro.ui.theme.AccentColor
+import com.divyateja.jimvro.ui.theme.accentPalette
 import com.divyateja.jimvro.ui.theme.ThemeMode
 import java.io.File
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -55,6 +64,7 @@ class UiRefinementFlowTest {
     private lateinit var repository: JimvroRepository
     private val store = ViewModelStore()
     private val date = LocalDate.now().toString()
+    private var displayedAccent: Color? = null
 
     @Before fun setup() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -80,7 +90,9 @@ class UiRefinementFlowTest {
                 ))
             }
             var currentTheme by remember { mutableStateOf(theme) }
-            JimvroTheme(currentTheme) {
+            JimvroTheme(currentTheme, settings.accentColor) {
+                val accent = MaterialTheme.colorScheme.secondary
+                SideEffect { displayedAccent = accent }
                 JimvroApp(viewModel, currentTheme, { currentTheme = it }, settings, { settings = it })
             }
         }
@@ -105,11 +117,48 @@ class UiRefinementFlowTest {
         }
     }
 
-    @Test fun todayOffersStartBeforeMetricsAndDoesNotScoreUnconfiguredMission() {
+    @Test fun darkAccentsUpdateGloballyAndFoodControlsAreIconOnly() = checkAppearance(ThemeMode.DARK, AccentColor.BLUE)
+
+    @Test fun lightAccentsUpdateGloballyAndFoodControlsAreIconOnly() = checkAppearance(ThemeMode.LIGHT, AccentColor.ROSE)
+
+    private fun checkAppearance(theme: ThemeMode, chosen: AccentColor) {
+        launch(theme)
+        rule.onAllNodesWithText("Home").assertCountEquals(1)
+        rule.onNodeWithText("Today").assertDoesNotExist()
+        val locale = InstrumentationRegistry.getInstrumentation().targetContext.resources.configuration.locales[0]
+        val oldDateHeading = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM", locale)).uppercase(locale)
+        rule.onNodeWithText(oldDateHeading).assertDoesNotExist()
+        screenshot("home-${theme.name.lowercase()}")
+        rule.onNodeWithContentDescription("Settings").performClick()
+        rule.onNodeWithContentDescription("Olive accent").assertIsSelected()
+        AccentColor.entries.forEach { accent ->
+            rule.onNodeWithContentDescription("${accent.label} accent").performClick().assertIsSelected()
+            rule.runOnIdle { assertEquals(accentPalette(accent, theme == ThemeMode.DARK).color, displayedAccent) }
+        }
+        rule.onNodeWithContentDescription("${chosen.label} accent").performClick().assertIsSelected()
+        rule.onNodeWithContentDescription("Olive accent").assertIsNotSelected()
+        screenshot("settings-${chosen.name.lowercase()}")
+        rule.onNodeWithText("Back").performClick()
+        rule.onNodeWithText("Food").performClick()
+        rule.onAllNodesWithText("Food").assertCountEquals(1)
+        listOf("Barcode", "Camera", "Gallery").forEach { name ->
+            rule.onNodeWithText(name).assertDoesNotExist()
+            rule.onNodeWithContentDescription(name).assertIsDisplayed().assertHasClickAction()
+        }
+        screenshot("food-${chosen.name.lowercase()}")
+        rule.onNodeWithContentDescription("Camera").performClick()
+        rule.onNodeWithText("Set up photo estimates").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Settings").performClick()
+        rule.onNodeWithContentDescription("${chosen.label} accent").assertIsSelected()
+        rule.onNodeWithText("Back").performClick()
+        rule.onNodeWithText("Home").performClick()
+        rule.onNodeWithText("Start workout").assertIsDisplayed()
+    }
+
+    @Test fun homeOffersStartBeforeMetricsAndDoesNotScoreUnconfiguredMission() {
         launch()
         rule.onNodeWithText("Start workout").assertIsDisplayed()
         rule.onNodeWithText("0/100").assertDoesNotExist()
-        screenshot("today-dark")
         rule.onNodeWithText("Start workout").performClick()
         rule.onNodeWithText("Session name (optional)").assertIsDisplayed()
         screenshot("new-workout-dark")

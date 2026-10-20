@@ -12,6 +12,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.divyateja.jimvro.ui.JimvroApp
 import com.divyateja.jimvro.ui.AppSettings
 import com.divyateja.jimvro.ui.theme.JimvroTheme
+import com.divyateja.jimvro.ui.theme.AccentColor
 import com.divyateja.jimvro.ui.theme.ThemeMode
 
 class MainActivity : FragmentActivity() {
@@ -43,6 +44,7 @@ class MainActivity : FragmentActivity() {
             weeklyTrainingTarget = preferences.getInt("weekly_training_target", 4),
             healthConnectAutoSync = preferences.getBoolean("health_connect_auto_sync", false),
             geminiApiKey = preferences.getString("gemini_api_key", "") ?: "",
+            accentColor = AccentColor.fromPreference(preferences.getString("accent_color", null)),
         )
         ProteinReminderScheduler.sync(this, initialSettings)
         setContent {
@@ -53,7 +55,7 @@ class MainActivity : FragmentActivity() {
                 )
             }
             var appSettings by remember { mutableStateOf(initialSettings) }
-            JimvroTheme(themeMode) {
+            JimvroTheme(themeMode, appSettings.accentColor) {
                 val appViewModel: AppViewModel = viewModel(factory = AppViewModel.Factory(repository))
                 JimvroApp(appViewModel, themeMode, { mode ->
                     themeMode = mode
@@ -80,6 +82,7 @@ class MainActivity : FragmentActivity() {
                         .putInt("weekly_training_target", value.weeklyTrainingTarget)
                         .putBoolean("health_connect_auto_sync", value.healthConnectAutoSync)
                         .putString("gemini_api_key", value.geminiApiKey)
+                        .putString("accent_color", value.accentColor.name)
                         .apply()
                     ProteinReminderScheduler.sync(this, value)
                 }

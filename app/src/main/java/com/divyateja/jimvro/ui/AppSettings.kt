@@ -1,5 +1,7 @@
 package com.divyateja.jimvro.ui
 
+import com.divyateja.jimvro.ui.theme.AccentColor
+
 data class AppSettings(
     val weightUnit: String = "kg",
     val lengthUnit: String = "cm",
@@ -20,6 +22,7 @@ data class AppSettings(
     val weeklyTrainingTarget: Int = 4,
     val healthConnectAutoSync: Boolean = false,
     val geminiApiKey: String = "",
+    val accentColor: AccentColor = AccentColor.OLIVE,
 )
 
 internal fun Double.displayWeight(settings: AppSettings): Double =
